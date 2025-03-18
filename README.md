@@ -8,7 +8,7 @@
 > Fei (named after the Chinese flying dragon of adaptability) is a powerful code assistant that combines AI capabilities with advanced code manipulation tools and a distributed memory system.
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/stepanvalic/fei-david_streajc/refs/heads/main/tmp-logo.jpg" alt="Fei Logo" width="200"/>
+  <img src="https://raw.githubusercontent.com/david-strejc/fei/refs/heads/main/tmp-logo.jpg" alt="Fei Logo" width="200"/>
 </div>
 
 ## 📑 Table of Contents
