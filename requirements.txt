@@ -1,0 +1,8 @@
+anthropic>=0.49.0
+litellm>=1.26.0
+requests>=2.32.0
+rich>=13.9.0
+click>=8.1.0
+pydantic>=2.10.0
+textual>=0.47.1
+tree-sitter-languages>=1.8.0

@@ -1,0 +1,74 @@
+# Python
+Memdir/
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.env
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.npm
+.yarn/
+.yarn-integrity
+
+# Editor directories and files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.*.sw?
+.DS_Store
+
+# Cache and logs
+.cache/
+.pytest_cache/
+logs/
+*.log
+
+# Config
+config/keys
+
+# Backup and temporary files
+backup/
+tmp/
+temp/
+*.bak
+*.tmp
+
+# Coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
