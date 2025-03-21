@@ -8,7 +8,7 @@
 > Fei (named after the Chinese flying dragon of adaptability) is a powerful code assistant that combines AI capabilities with advanced code manipulation tools and a distributed memory system.
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/user/fei/main/docs/logo.png" alt="Fei Logo" width="200"/>
+  <img src="https://github.com/stepanvalic/fei-david_streajc/blob/main/tmp-logo.jpg?raw=true" alt="Fei Logo" width="200"/>
 </div>
 
 ## 📑 Table of Contents
@@ -100,14 +100,14 @@ The project stands as an alternative to centralized AI approaches, focusing on h
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/fei.git
+git clone https://github.com/david-strejc/fei.git
 cd fei
 
 # Install from the current directory
 pip install -e .
 
 # Or install directly from GitHub
-pip install git+https://github.com/yourusername/fei.git
+pip install git+https://github.com/david-strejc/fei.git
 ```
 
 ### Requirements
@@ -371,9 +371,9 @@ This project is licensed under the MIT License - see the LICENSE file for detail
     Built with ❤️ by the Fei team
   </p>
   <p>
-    <a href="https://github.com/yourusername/fei">GitHub</a> •
-    <a href="https://github.com/yourusername/fei/issues">Issues</a> •
-    <a href="https://docs.example.com/fei">Documentation</a>
+    <a href="https://github.com/david-strejc">GitHub</a> •
+    <a href="https://github.com/david-strejc/fei/issues">Issues</a> •
+    <a href="https://github.com/david-strejc/fei/blob/main/README.md">Documentation</a>
   </p>
   <p>
     <i>The FEI Network: Intelligence of the people, by the people, for the people.</i>
