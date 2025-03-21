@@ -9,7 +9,7 @@
 > Fei (pojmenovaný po čínském létajícím drakovi přizpůsobivosti) je výkonný asistent pro kód, který kombinuje možnosti umělé inteligence s pokročilými nástroji pro manipulaci s kódem a distribuovaným systémem paměti.
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/david-strejc/fei/refs/heads/main/tmp-logo.jpg" alt="Fei Logo" width="200"/>
+  <img src="https://github.com/stepanvalic/fei-david_streajc/blob/main/tmp-logo.jpg?raw=true" alt="Fei Logo" width="200"/>
 </div>
 
 ## 📑 Obsah
