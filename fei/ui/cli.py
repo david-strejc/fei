@@ -346,12 +346,18 @@ class CLI:
         print(colorize(f"\nStarting continuous task execution (max {max_iterations} iterations):", "cyan"))
         print(colorize("Task: ", "bold") + task)
         
-        # Enhance the task prompt to guide the LLM
+        # Enhance the task prompt to guide the LLM for autonomous execution
         enhanced_task = f"""
-I'll help you with this task: {task}
+Your goal is to complete the following task autonomously: {task}
 
-IMPORTANT: I'll work on this task in steps. After each step, I'll wait for your response.
-When the task is completely finished, include the exact text [TASK_COMPLETE] at the end of your message.
+Follow these instructions:
+1. Break the task down into logical steps based on the request.
+2. Execute each step sequentially using the available tools (like write_to_file, edit_handler, etc.).
+3. For coding tasks, generate the necessary code for each step and use file tools to save or modify the code file.
+4. Do NOT ask the user for the code or instructions for each step. Generate it yourself based on the overall task.
+5. After completing a step that involves using a tool (like writing to a file), briefly confirm the action taken.
+6. Continue executing steps until the entire task is finished.
+7. When the entire task is complete, and only then, include the exact text [TASK_COMPLETE] at the very end of your final message.
 """
         
         # Execute the task
@@ -389,7 +395,7 @@ def parse_args() -> argparse.Namespace:
     
     parser.add_argument("--api-key", help="API key (defaults to provider-specific environment variable)")
     parser.add_argument("--model", help="Model to use (defaults to provider's default model)")
-    parser.add_argument("--provider", default="anthropic", choices=["anthropic", "openai", "groq"], help="LLM provider to use")
+    parser.add_argument("--provider", default="anthropic", choices=["anthropic", "openai", "groq", "google"], help="LLM provider to use") # Added 'google'
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     parser.add_argument("-m", "--message", help="Send a single message and exit")
     parser.add_argument("--textual", action="store_true", help="Use the modern Textual-based chat interface")

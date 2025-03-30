@@ -25,7 +25,8 @@ from rich.text import Text
 from rich.console import RenderableType
 
 # Import the autocomplete library
-from textual_autocomplete import AutoComplete, Dropdown, DropdownItem
+# Dropdown seems removed or moved in textual-autocomplete v4+
+from textual_autocomplete import AutoComplete, DropdownItem 
 
 from fei.core.assistant import Assistant
 from fei.core.mcp import MCPManager

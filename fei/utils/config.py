@@ -58,6 +58,10 @@ CONFIG_SCHEMA = {
         "api_key": {"type": ConfigValueType.STRING, "secret": True},
         "model": {"type": ConfigValueType.STRING, "default": "groq/llama3-70b-8192"},
     },
+    "google": {
+        "api_key": {"type": ConfigValueType.STRING, "secret": True},
+        "model": {"type": ConfigValueType.STRING, "default": "gemini/gemini-1.5-pro-latest"}, # Defaulting to a known stable model
+    },
     "brave": {
         "api_key": {"type": ConfigValueType.STRING, "secret": True},
     },
@@ -322,8 +326,8 @@ class Config:
         Load environment variables from .env file securely
         """
         # Define sensitive keys to track
-        sensitive_keys = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY", 
-                         "BRAVE_API_KEY", "LLM_API_KEY"]
+        sensitive_keys = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY",
+                         "GOOGLE_API_KEY", "BRAVE_API_KEY", "LLM_API_KEY"]
         
         # Save current environment variable state for sensitive keys
         current_env = {}
@@ -485,14 +489,14 @@ class Config:
             return env_value
             
         # Special cases for API keys
-        if section in ['anthropic', 'openai', 'groq', 'brave'] and option == 'api_key':
-            # Provider specific format (e.g., ANTHROPIC_API_KEY)
+        if section in ['anthropic', 'openai', 'groq', 'google', 'brave'] and option == 'api_key':
+            # Provider specific format (e.g., ANTHROPIC_API_KEY, GOOGLE_API_KEY)
             env_value = os.environ.get(f"{section.upper()}_API_KEY")
             if env_value is not None:
                 return env_value
                 
             # Try generic LLM_API_KEY as fallback for LLM providers
-            if section in ['anthropic', 'openai', 'groq']:
+            if section in ['anthropic', 'openai', 'groq', 'google']:
                 env_value = os.environ.get("LLM_API_KEY")
                 if env_value is not None:
                     logger.debug(f"Using LLM_API_KEY for {section}")

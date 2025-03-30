@@ -1,6 +1,8 @@
 anthropic>=0.49.0
 litellm>=1.26.0
 requests>=2.32.0
+httpx>=0.27.0 # Added for async HTTP requests in MCP
+python-dotenv>=1.0.0 # Added explicitly as it's used
 rich>=13.9.0
 click>=8.1.0
 pydantic>=2.10.0

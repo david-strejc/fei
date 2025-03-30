@@ -153,9 +153,14 @@ def replace_handler(args: Dict[str, Any]) -> Dict[str, Any]:
     if content is None:
         return {"error": "Content is required"}
     
-    success, message = code_editor.replace_file(file_path, content)
+    # Correctly unpack the three return values from replace_file
+    success, message, backup_path = code_editor.replace_file(file_path, content) 
     
-    return {"success": success, "message": message}
+    # Include backup_path in the response if it exists
+    response = {"success": success, "message": message}
+    if backup_path:
+        response["backup_path"] = backup_path
+    return response
 
 def ls_handler(args: Dict[str, Any]) -> Dict[str, Any]:
     """Handler for LS tool"""

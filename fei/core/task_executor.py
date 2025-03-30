@@ -231,30 +231,58 @@ class TaskExecutor:
             while context.iteration < max_iterations:
                 context.iteration += 1
                 logger.info(f"Task iteration {context.iteration}/{max_iterations}")
-                
-                # Execute iteration
-                _, is_complete, next_task = await self._execute_task_iteration(
-                    current_task, 
-                    context,
-                    interactive=False
+
+                # --- Refactored Loop Logic ---
+                logger.debug(f"Sending task/continuation to LLM: {current_task}")
+
+                # Get response and potential tool calls from assistant
+                response_content, tool_calls = await self.assistant._send_message_to_llm(
+                    self.assistant.conversation_manager.get_messages() + [{"role": "user", "content": current_task}], # Send current history + task
+                    tools=self.assistant.get_tools()
                 )
-                
-                # Check if task is complete
+
+                # Add the user message (task instruction) and assistant response (potentially with tool calls)
+                self.assistant.conversation_manager.add_user_message(current_task) # Add the instruction that was sent
+                self.assistant.conversation_manager.add_assistant_message(response_content, tool_calls) # Add LLM response
+
+                processed_response, is_complete = await self._process_assistant_response(response_content, context)
+                self.on_message(processed_response) # Display intermediate response
+
                 if is_complete:
-                    logger.info("Task completed successfully")
+                    logger.info("Task completed successfully (completion signal found).")
                     elapsed_time = time.time() - context.start_time
                     return f"Task completed in {context.iteration} iterations ({elapsed_time:.2f}s)"
-                
-                # Set next task
-                current_task = next_task or "Continue with the next step of the task."
-                
+
+                # If there were tool calls, execute them and get the continuation response
+                if tool_calls:
+                    logger.info(f"Processing {len(tool_calls)} tool calls for iteration {context.iteration}")
+                    tool_results = await self.assistant.process_tool_calls(tool_calls)
+                    self.assistant.conversation_manager.add_tool_results(tool_results)
+
+                    logger.info("Continuing conversation with tool results...")
+                    # Send continuation message to get final response after tool execution
+                    # The _send_continuation method already adds the final assistant response to history
+                    final_answer_after_tools = await self.assistant._send_continuation(self.assistant.get_tools())
+
+                    processed_final_answer, is_complete_after_tools = await self._process_assistant_response(final_answer_after_tools, context)
+                    self.on_message(processed_final_answer) # Display final answer for this iteration
+
+                    if is_complete_after_tools:
+                        logger.info("Task completed successfully (completion signal found after tool use).")
+                        elapsed_time = time.time() - context.start_time
+                        return f"Task completed in {context.iteration} iterations ({elapsed_time:.2f}s)"
+
+                # Set next task instruction for the loop
+                current_task = "Continue with the next step of the task based on the conversation history."
+                # --- End Refactored Loop Logic ---
+
                 # Add a small delay to avoid spinning too fast
                 await asyncio.sleep(0.5)
-                
+
             # Max iterations reached
             logger.warning(f"Task reached max iterations ({max_iterations})")
             return f"Task did not complete within {max_iterations} iterations"
-            
+
         finally:
             # Clean up task context
             self.task_contexts.pop(task_id, None)

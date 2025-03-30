@@ -9,6 +9,7 @@ with LLM providers via LiteLLM and manages tool execution.
 import os
 import json
 import asyncio
+import logging # Add missing import
 from typing import Dict, List, Any, Optional, Union, Tuple
 from functools import lru_cache
 
@@ -48,14 +49,16 @@ class ProviderManager:
         self.provider_key_map = {
             "anthropic": "ANTHROPIC_API_KEY",
             "openai": "OPENAI_API_KEY",
-            "groq": "GROQ_API_KEY"
+            "groq": "GROQ_API_KEY",
+            "google": "GOOGLE_API_KEY" # Added Google
         }
         
         # Default model mapping by provider
         self.default_models = {
             "anthropic": "claude-3-7-sonnet-20250219",
             "openai": "gpt-4o",
-            "groq": "groq/llama3-70b-8192"
+            "groq": "groq/llama3-70b-8192",
+            "google": "gemini/gemini-2.5-pro" # Added Google with requested model
         }
         
         # Set up API key based on provider
@@ -185,9 +188,16 @@ class ToolManager:
         """
         if not self.tool_registry:
             return {"error": "No tool registry available"}
-        
-        logger.debug(f"Executing tool: {tool_name}")
-        logger.debug(f"Arguments: {json.dumps(tool_args, indent=2)}")
+
+        # Ensure logger is at DEBUG level for this critical section
+        tool_logger = get_logger(__name__) # Get logger for this module
+        original_level = tool_logger.level
+        if tool_logger.level > logging.DEBUG:
+             tool_logger.setLevel(logging.DEBUG)
+             tool_logger.debug("Temporarily set assistant logger to DEBUG for tool execution.")
+
+        tool_logger.debug(f"Attempting to execute tool: {tool_name}")
+        tool_logger.debug(f"Arguments: {json.dumps(tool_args, indent=2)}")
         
         # Run tool execution in an executor to avoid blocking
         try:
@@ -204,12 +214,19 @@ class ToolManager:
         try:
             json.dumps(result)
         except (TypeError, OverflowError) as e:
-            logger.warning(f"Tool result not JSON serializable: {e}")
-            return {"error": f"Tool returned non-serializable result: {e}", "partial_result": str(result)[:1000]}
+            tool_logger.warning(f"Tool result not JSON serializable: {e}")
+            result_data = {"error": f"Tool returned non-serializable result: {e}", "partial_result": str(result)[:1000]}
+        else:
+             result_data = result
+
+        tool_logger.debug(f"Tool {tool_name} execution result: {json.dumps(result_data, indent=2)}")
         
-        logger.debug(f"Result preview: {str(result)[:200]}...")
-        
-        return result
+        # Restore original logger level if changed
+        if tool_logger.level != original_level:
+            tool_logger.setLevel(original_level)
+            tool_logger.debug("Restored original assistant logger level.")
+
+        return result_data
 
 
 class ConversationManager:
@@ -291,16 +308,9 @@ class ConversationManager:
                     "name": result["name"],
                     "content": result["content"]
                 })
-            
-            # Also add the combined format expected by other providers
-            tool_results_message = {"role": "user", "content": []}
-            for result in tool_results:
-                tool_results_message["content"].append({
-                    "type": "tool_result",
-                    "tool_call_id": result["tool_call_id"],
-                    "content": result["content"]
-                })
-            self.conversation.append(tool_results_message)
+            # Removed the combined 'user' role message for tool results,
+            # as it seems incompatible with Gemini continuation calls via LiteLLM.
+            # The individual 'tool' role messages added above should suffice.
     
     def get_messages(self) -> List[Dict[str, Any]]:
         """
@@ -512,7 +522,8 @@ class Assistant:
         params = {
             "model": self.model,
             "max_tokens": 4000,
-            "messages": messages
+            "messages": messages,
+            "api_key": self.provider_manager.api_key # Explicitly pass API key
         }
         
         if system_prompt:
@@ -564,7 +575,8 @@ class Assistant:
             List of normalized tool calls
         """
         tool_calls = []
-        
+        logger.debug(f"Attempting to extract tool calls from raw response: {response!r}") # Log raw response
+
         try:
             # Try different formats based on provider
             response_tool_calls = None
@@ -597,10 +609,14 @@ class Assistant:
                             "name": tool_call.name,
                             "input": tool_call.input
                         })
+            logger.debug(f"Successfully extracted tool calls: {tool_calls}")
         except Exception as e:
             logger.error(f"Error extracting tool calls: {e}", exc_info=True)
             # Don't raise here - just return an empty list
         
+        if not tool_calls:
+            logger.debug("No tool calls found in the response.")
+
         return tool_calls
     
     def _extract_response_content(self, response) -> str:
@@ -641,7 +657,8 @@ class Assistant:
             continue_params = {
                 "model": self.model,
                 "max_tokens": 4000,
-                "messages": self.conversation
+                "messages": self.conversation,
+                "api_key": self.provider_manager.api_key # Explicitly pass API key
             }
             
             # Make sure to include tools in the continuation
