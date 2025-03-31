@@ -99,3 +99,31 @@ Integrate the proposed self-evolution framework, adapting it to use the project'
     *   Implement alerting based on Memdir queries (e.g., check for recent `#evolution_log` entries with `status: failed`).
 
 This provides a comprehensive overview and a path forward.
+
+## Plan: LLM Evaluation & Cost Optimization Workflow
+
+To manage operational costs effectively, especially as the agent evolves and potentially spawns sub-agents for specific tasks, Fei needs a mechanism to dynamically select the most appropriate LLM based on cost and capability.
+
+**Proposed Strategy:**
+
+1.  **Model Benchmarking:**
+    *   Define a suite of representative benchmark tasks relevant to Fei's core functions (e.g., code generation, file manipulation, tool use accuracy, planning, self-correction).
+    *   Run these benchmarks periodically across various available LLMs (e.g., different versions of GPT, Claude, Gemini, Groq Llama, Mistral, etc.) supported by LiteLLM.
+    *   Record performance metrics (e.g., task success rate, code quality score, execution time, tool use success rate) and associated costs (token usage, API call cost) for each model on each task.
+    *   Store benchmark results and up-to-date cost data in Memdir (e.g., folder `.Knowledge/LLM_Benchmarks`).
+2.  **Dynamic Model Routing:**
+    *   Implement a "Model Router" component within the `Assistant` or `TaskExecutor`.
+    *   Before initiating an LLM call, the router analyzes the current task/sub-task context (e.g., complexity, required capabilities like tool use, conversation history length).
+    *   The router queries the benchmark data in Memdir to identify suitable models that meet the task requirements within potential cost constraints.
+    *   It selects the most cost-effective model that meets the performance threshold for the specific task context. For example:
+        *   Use cheaper/faster models (e.g., Claude 3 Haiku, Gemini Flash, Groq Llama-8b) for simple queries, planning, summarization, or initial drafts.
+        *   Use more capable models (e.g., GPT-4o, Claude 3 Opus/Sonnet, Gemini 1.5 Pro) for complex code generation, refactoring, debugging, or critical decision-making steps.
+3.  **Cost Tracking & Budgeting:**
+    *   Utilize LiteLLM's cost tracking capabilities for each API call.
+    *   Log cost information alongside operational history in Memdir.
+    *   Implement optional budget constraints per task or time period, influencing the model router's decisions.
+4.  **Feedback Loop:**
+    *   Analyze task success/failure rates correlated with the chosen model (using Memdir history).
+    *   Use this data to refine the model selection criteria and potentially trigger re-benchmarking if a model's performance degrades.
+5.  **Sub-Agent Specialization:**
+    *   As the agent evolves (potentially using the Self-Evolution Framework), allow different stages or specialized sub-agents (spawned for specific complex tasks) to have different default model preferences or routing logic based on their function.
