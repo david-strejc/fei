@@ -145,16 +145,23 @@ def edit_handler(args: Dict[str, Any]) -> Dict[str, Any]:
 def replace_handler(args: Dict[str, Any]) -> Dict[str, Any]:
     """Handler for Replace tool"""
     file_path = args.get("file_path")
-    content = args.get("content")
+    # Accept either 'content' or 'new_content' from the LLM
+    content = args.get("content") if args.get("content") is not None else args.get("new_content")
     
     if not file_path:
         return {"error": "File path is required"}
-    
+        
+    # Handle potential absolute path issue by making it relative if it starts with '/'
+    if file_path.startswith('/'):
+        logger.warning(f"Received absolute path '{file_path}', treating as relative.")
+        file_path = file_path.lstrip('/')
+
     if content is None:
-        return {"error": "Content is required"}
+        # Check both keys before erroring
+        return {"error": "Content ('content' or 'new_content') is required"}
     
     # Correctly unpack the three return values from replace_file
-    success, message, backup_path = code_editor.replace_file(file_path, content) 
+    success, message, backup_path = code_editor.replace_file(file_path, content)
     
     # Include backup_path in the response if it exists
     response = {"success": success, "message": message}
