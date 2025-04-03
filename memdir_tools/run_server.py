@@ -53,10 +53,16 @@ def main():
     if not api_key:
         print("WARNING: No API key set. Using an empty API key is insecure.")
         print("Set an API key using the MEMDIR_API_KEY environment variable or --api-key parameter.")
-    
+        api_key = "" # Use empty string if none provided, server decorator will handle default
+
+    # Set the API key in the Flask app config
+    app.config['MEMDIR_API_KEY'] = api_key
+
     # Start the server
     print(f"Starting Memdir HTTP API server on {args.host}:{args.port}...")
-    app.run(host=args.host, port=args.port, debug=args.debug)
+    # Pass use_reloader=False to prevent Flask from restarting the process,
+    # which can interfere with how the test fixture manages the server process.
+    app.run(host=args.host, port=args.port, debug=args.debug, use_reloader=False)
 
 if __name__ == "__main__":
     main()

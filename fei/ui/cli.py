@@ -40,6 +40,7 @@ from fei.tools.definitions import TOOL_DEFINITIONS
 from fei.utils.config import Config
 from fei.utils.logging import get_logger
 from fei.core.assistant import ConsentUiProvider # Import the type alias
+from fei.evolution import load_stage # Import the stage loading function
 
 logger = get_logger(__name__)
 
@@ -144,9 +145,12 @@ class CLI:
         """Set up tool registry with all tools"""
         registry = ToolRegistry()
         
-        # Use the centralized tool registration function
+        # Use the centralized tool registration functions
         from fei.tools.code import create_code_tools
+        from fei.tools.memory_tools import create_memory_tools # Import memory tools registration
+        
         create_code_tools(registry)
+        create_memory_tools(registry) # Register memory tools
         
         return registry
     
@@ -408,9 +412,17 @@ Follow these instructions:
         
         # Set up assistant
         self.assistant = self.setup_assistant(args.api_key, args.model, args.provider)
-        
         logger.info(f"Using provider: {self.assistant.provider}, model: {self.assistant.model}")
-        
+
+        # Load the current evolution stage
+        try:
+            loaded_stage_id = load_stage(self.assistant, self.tool_registry)
+            logger.info(f"Evolution Stage {loaded_stage_id} loaded.")
+        except Exception as e:
+            logger.error(f"Failed to load evolution stage: {e}", exc_info=True)
+            print(colorize(f"Error loading evolution stage: {e}. Proceeding with baseline.", "red"))
+            # Optionally, decide whether to exit or continue without evolution mods
+
         # Process based on arguments
         if args.task:
             # Continuous task execution mode

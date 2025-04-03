@@ -137,30 +137,25 @@ class MemdirConnector:
         """
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             return s.connect_ex(('localhost', port)) == 0
-            
+
     def _start_server(self) -> bool:
         """
         Start the Memdir server if not already running
-        
+
         Returns:
             True if server was started successfully, False otherwise
         """
         # Check if server is already running - either our process or something else
         if MemdirConnector._server_process is not None:
-            # Process exists but might have terminated
             if MemdirConnector._server_process.poll() is None:
-                # Process is still running
                 logger.info("Memdir server process is already running.")
                 return True
-            # Process has terminated, clean up the reference
             logger.info("Previous Memdir server process has terminated. Starting a new one.")
             MemdirConnector._server_process = None
-            
+
         # Check if some other process is using our port
         if self._is_port_in_use(self._port):
             logger.info(f"Port {self._port} is already in use. Assuming server is running.")
-            
-            # Verify that it's actually a Memdir server by checking the health endpoint
             try:
                 response = requests.get(f"{self.server_url}/health", timeout=1.0)
                 if response.status_code == 200:
@@ -169,50 +164,39 @@ class MemdirConnector:
                 logger.warning("Something is using the port but it's not a Memdir server.")
             except Exception:
                 logger.warning("Something is using the port but it's not responding to health checks.")
-            
+
         try:
-            # Start the server as a subprocess with API key
             logger.info(f"Starting Memdir server on port {self._port}...")
             cmd = [
-                sys.executable, 
-                "-m", 
-                "memdir_tools.run_server", 
-                "--port", 
+                sys.executable,
+                "-m",
+                "memdir_tools.run_server",
+                "--port",
                 str(self._port),
-                "--api-key", 
+                "--api-key",
                 self.api_key
             ]
-            
-            # Create a log file for the server output
+
             log_dir = os.path.join(os.path.expanduser("~"), ".memdir_logs")
             os.makedirs(log_dir, exist_ok=True)
             log_file = os.path.join(log_dir, "memdir_server.log")
-            
-            # Open the log file
             f_log = open(log_file, 'a')
-            
-            # Use DETACHED_PROCESS flag on Windows to run in background
+
             if os.name == 'nt':
                 MemdirConnector._server_process = subprocess.Popen(
-                    cmd, 
-                    stdout=f_log,  # Redirect output to log file
+                    cmd,
+                    stdout=f_log,
                     stderr=f_log,
                     creationflags=subprocess.DETACHED_PROCESS
                 )
             else:
-                # On Unix, just use normal subprocess
                 MemdirConnector._server_process = subprocess.Popen(
                     cmd,
-                    stdout=f_log,  # Redirect output to log file
+                    stdout=f_log,
                     stderr=f_log,
-                    preexec_fn=os.setpgrp  # Run in a new process group
+                    preexec_fn=os.setpgrp
                 )
-                
-            # Register cleanup function (only once)
-            if not hasattr(MemdirConnector, "_cleanup_registered"):
-                atexit.register(self._stop_server)
-                MemdirConnector._cleanup_registered = True
-            
+
             # Wait longer for server to start (up to 5 seconds)
             for i in range(10):  # 10 attempts, 0.5s each = 5s total
                 time.sleep(0.5)
@@ -222,22 +206,21 @@ class MemdirConnector:
                         logger.info(f"Memdir server started successfully after {i/2:.1f}s")
                         return True
                 except Exception:
-                    continue
-                    
-            # If we get here, the server didn't respond in time, but might still be starting
-            # Check if the process is still running
+                    pass # Ignore connection errors during startup check
+                continue # Continue loop to check again
+
+            # If loop finishes, check process status
             if MemdirConnector._server_process.poll() is None:
                 logger.info("Memdir server process started but not responding to health checks yet.")
-                return True
+                return True # Assume it might become ready later
             else:
-                # Process exited
-                logger.error("Memdir server process exited unexpectedly.")
+                logger.error("Memdir server process exited unexpectedly during startup.")
                 return False
-            
+
         except Exception as e:
-            logger.error(f"Error starting Memdir server: {e}")
+            logger.error(f"Error starting Memdir server: {e}", exc_info=True)
             return False
-            
+
     @classmethod
     def _stop_server(cls) -> None:
         """Stop the Memdir server if it was started by this class"""

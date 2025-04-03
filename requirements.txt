@@ -8,3 +8,6 @@ click>=8.1.0
 pydantic>=2.10.0
 textual>=0.47.1
 tree-sitter-languages>=1.8.0
+pytest-asyncio>=0.25.0 # Added for async test support
+python-dateutil>=2.8.0 # Added for memdir_tools
+Flask>=2.0.0 # Added for memdir_tools server

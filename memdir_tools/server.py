@@ -11,7 +11,8 @@ from datetime import datetime
 from functools import wraps
 
 from flask import Flask, request, jsonify, Response
-from werkzeug.security import safe_str_cmp
+import hmac # Import hmac for compare_digest
+# from werkzeug.security import safe_str_cmp # Removed import
 
 from memdir_tools.utils import (
     ensure_memdir_structure,
@@ -28,32 +29,43 @@ from memdir_tools.search import (
     search_memories as search_memories_advanced,
     parse_search_args
 )
-from memdir_tools.folders import (
-    create_folder,
-    delete_folder,
-    rename_folder,
-    list_folders,
-    get_folder_stats
-)
+# Import the manager class instead of individual functions
+from memdir_tools.folders import MemdirFolderManager
 from memdir_tools.filter import run_filters
 
 # Default API key - replace with a secure value in production
 DEFAULT_API_KEY = "YOUR_API_KEY_HERE"
 
-# Get the API key from environment variable or use default
-API_KEY = os.environ.get("MEMDIR_API_KEY", DEFAULT_API_KEY)
+# API_KEY will be set in app.config by run_server.py
+# API_KEY = os.environ.get("MEMDIR_API_KEY", DEFAULT_API_KEY) # Removed module-level read
 
 app = Flask(__name__)
+# Set a default config value, which will be overwritten by run_server.py
+app.config['MEMDIR_API_KEY'] = DEFAULT_API_KEY
 
 # Ensure the memdir structure exists on server startup
 ensure_memdir_structure()
+
+# Instantiate the folder manager
+folder_manager = MemdirFolderManager()
 
 def require_api_key(f):
     """Decorator to require API key for all requests"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         provided_key = request.headers.get('X-API-Key')
-        if not provided_key or not safe_str_cmp(provided_key, API_KEY):
+        expected_key = app.config.get('MEMDIR_API_KEY', DEFAULT_API_KEY) # Get key from app config
+
+        # Use hmac.compare_digest for secure comparison
+        # Note: Both arguments must be bytes
+        is_valid = False
+        if provided_key and expected_key:
+            # Ensure keys are bytes
+            expected_key_bytes = expected_key.encode('utf-8') if isinstance(expected_key, str) else expected_key
+            provided_key_bytes = provided_key.encode('utf-8') if isinstance(provided_key, str) else provided_key
+            is_valid = hmac.compare_digest(provided_key_bytes, expected_key_bytes)
+
+        if not is_valid:
             return jsonify({"error": "Invalid or missing API key"}), 401
         return f(*args, **kwargs)
     return decorated_function
@@ -286,8 +298,12 @@ def search():
 @require_api_key
 def get_folders():
     """List all folders in the Memdir structure"""
-    folders = list_folders()
-    return jsonify({"folders": folders})
+    # Use the manager instance
+    folders = folder_manager.list_folders() # Assuming list_folders is now a method
+    # Adjust based on actual return value if list_folders itself returns the dict list
+    folder_info = folder_manager.list_folders(recursive=True) # Get all folders recursively
+    folder_paths = [f["path"] for f in folder_info] # Extract paths
+    return jsonify({"folders": folder_paths})
 
 @app.route('/folders', methods=['POST'])
 @require_api_key
@@ -301,12 +317,18 @@ def create_folder_endpoint():
     folder_name = data['folder']
     
     try:
-        create_folder(folder_name)
-        return jsonify({
-            "success": True,
-            "message": f"Folder created successfully: {folder_name}"
-        })
+        # Use the manager instance
+        success = folder_manager.create_folder(folder_name)
+        if success:
+            return jsonify({
+                "success": True,
+                "message": f"Folder created successfully: {folder_name}"
+            })
+        else:
+             # Handle case where folder might already exist
+             return jsonify({"error": f"Folder already exists or could not be created: {folder_name}"}), 409
     except Exception as e:
+        # Correct indentation for the except block
         return jsonify({"error": f"Failed to create folder: {str(e)}"}), 500
 
 @app.route('/folders/<path:folder_path>', methods=['DELETE'])
@@ -314,12 +336,19 @@ def create_folder_endpoint():
 def delete_folder_endpoint(folder_path):
     """Delete a folder"""
     try:
-        delete_folder(folder_path)
-        return jsonify({
-            "success": True,
-            "message": f"Folder deleted successfully: {folder_path}"
-        })
+        # Use the manager instance
+        success, message = folder_manager.delete_folder(folder_path)
+        if success:
+            return jsonify({
+                "success": True,
+                "message": message
+            })
+        else:
+            # Determine appropriate status code based on message (e.g., 404 if not found)
+            status_code = 404 if "does not exist" in message else 400
+            return jsonify({"error": message}), status_code
     except Exception as e:
+        # Correct indentation for the except block
         return jsonify({"error": f"Failed to delete folder: {str(e)}"}), 500
 
 @app.route('/folders/<path:folder_path>', methods=['PUT'])
@@ -334,12 +363,18 @@ def rename_folder_endpoint(folder_path):
     new_name = data['new_name']
     
     try:
-        rename_folder(folder_path, new_name)
-        return jsonify({
-            "success": True,
-            "message": f"Folder renamed successfully from {folder_path} to {new_name}"
-        })
+        # Use the manager instance
+        success = folder_manager.rename_folder(folder_path, new_name)
+        if success:
+            return jsonify({
+                "success": True,
+                "message": f"Folder renamed successfully from {folder_path} to {new_name}"
+            })
+        else:
+             # Determine appropriate status code (e.g., 404 if not found, 409 if exists)
+             return jsonify({"error": f"Failed to rename folder {folder_path}"}), 400
     except Exception as e:
+        # Correct indentation for the except block
         return jsonify({"error": f"Failed to rename folder: {str(e)}"}), 500
 
 @app.route('/folders/<path:folder_path>/stats', methods=['GET'])
@@ -347,8 +382,12 @@ def rename_folder_endpoint(folder_path):
 def folder_stats_endpoint(folder_path):
     """Get stats for a specific folder"""
     try:
-        stats = get_folder_stats(folder_path)
+        # Use the manager instance
+        # Assuming get_folder_stats needs to be called on the instance
+        stats = folder_manager.get_folder_stats(folder_path)
         return jsonify(stats)
+    except FileNotFoundError:
+         return jsonify({"error": f"Folder not found: {folder_path}"}), 404
     except Exception as e:
         return jsonify({"error": f"Failed to get folder stats: {str(e)}"}), 500
 

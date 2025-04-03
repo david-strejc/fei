@@ -443,9 +443,25 @@ class Assistant:
                     "content": json.dumps({"error": f"Invalid JSON in tool arguments: {str(e)}"})
                 })
                 continue
-            
-            result = await self.execute_tool(tool_name, tool_args)
-            
+            # --- Memory Tool Special Handling ---
+            original_model = self.model
+            if tool_name.startswith("memory_") or tool_name.startswith("memdir_"):
+                # Temporarily switch to Gemini Flash for memory operations
+                flash_model_id = "gemini/gemini-1.5-flash" # Found via search
+                logger.debug(f"Switching to {flash_model_id} for memory tool: {tool_name}")
+                self.model = flash_model_id
+                # Note: This assumes the API key works for Flash.
+                # A more robust solution might involve separate ProviderManagers.
+
+            try:
+                result = await self.execute_tool(tool_name, tool_args)
+            finally:
+                # Switch back to the original model
+                if self.model != original_model:
+                    logger.debug(f"Switching back to original model: {original_model}")
+                    self.model = original_model
+            # --- End Memory Tool Special Handling ---
+
             # Format compatible with LiteLLM and both Anthropic/OpenAI
             results.append({
                 "type": "tool_result",

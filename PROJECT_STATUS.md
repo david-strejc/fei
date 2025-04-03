@@ -56,20 +56,32 @@ Based on a review of core files (`assistant.py`, `task_executor.py`, `registry.p
 6.  **Tool Call Error Handling:** The agent previously got stuck asking for a corrected tool when handlers failed due to unpacking errors (fixed for `Replace`, `Edit`). Error handling within the `TaskExecutor` could still be more robust for other tool failures.
 7.  **Process Management Tool Implementation:** Repeated attempts to implement handlers for process management tools (`view_process_output`, `send_process_input`, `check_process_status`, `terminate_process`) in `fei/tools/handlers.py` resulted in syntax errors, even when using `write_to_file`. The code was reverted.
 
-## TODOs / Next Steps
+## TODOs / Next Steps (Updated 2025-04-03)
 
-1.  **Implement MCP Consent/Security Flows (In Progress):** Basic framework implemented (config schema, client logic, placeholder handler, CLI provider). **Next:** Implement actual UI interaction in `_handle_mcp_consent` (or delegate to UI layer) for both CLI and Textual modes. Add more granular configuration options.
-2.  **Refactor `ProcessManager` Cleanup (Completed):** Removed `atexit` and added signal handling in `cli.py`.
-3.  **Improve MCP Server Readiness Check (Completed):** Implemented basic handshake mechanism using `MCP_SERVER_READY` signal. **Note:** Servers need to be updated to emit this signal.
-4.  **Complete Snake Game Task (Partially Done):** Re-ran the agent with `--max-iterations 5`. It made progress but hit the limit. The generated `snake_game_final.py` was manually corrected. **Next:** Verify the corrected game runs.
-5.  **Debug TaskExecutor Loop:** Investigate why the `TaskExecutor` stopped prematurely in past runs and assess the fragility of its state management approach. (Lower priority for now as recent runs completed iterations).
-6.  **Improve Tool Call Reliability:**
-    *   Further refine prompts for Gemini tool use.
-    *   Consider adding logic to the `Assistant` or `TaskExecutor` to parse code/actions from text responses as a fallback if structured tool calls fail.
-    *   Evaluate if other models (GPT-4o, Claude 3) exhibit more reliable tool use behavior for complex tasks.
-7.  **Handle Interactive Shell Commands (Deferred):** Implementation of process management tools (`view_process_output`, etc.) encountered persistent syntax errors and was reverted. **Next:** Carefully re-implement or fix the handlers in `fei/tools/handlers.py` and corresponding definitions/registrations. This is needed for running/testing interactive code like the Snake game.
-8.  **Integrate Self-Evolution Framework (In Progress):** Basic structure created (`fei/evolution`, `manifest.json`). **Next:** Implement logic for loading stages based on manifest, checkpointing, validation, and transition triggers using Memdir.
-9.  **Testing:** Add more comprehensive unit and integration tests, especially for MCP interactions and the Task Executor. Verify MCP cleanup error (Issue 5) is resolved.
+**High Priority:**
+
+1.  **Integrate Self-Evolution Framework (Focus):**
+    *   **Leverage Existing Memdir Tools:** Utilize `MemdirConnector` and `memory_tools` (`memory_create_handler`, `memory_search_handler`, etc.) for storing/retrieving evolution state, knowledge, history, and checkpoints.
+    *   **Implement Stage Loading:** Develop logic in `fei/evolution/__init__.py` or a dedicated orchestrator to read `manifest.json`, load the current stage module (`fei/evolution/stages/stage_N.py`), and apply its modifications (e.g., patching `Assistant` methods, updating tool configurations).
+    *   **Implement Checkpointing:** Before attempting a stage transition, use `memory_create_handler` to save critical state (current stage ID, relevant config, key memory IDs) to a designated Memdir folder (e.g., `.Evolution/Checkpoints`).
+    *   **Implement Validation:** Define validation tasks within each stage module or the manifest. Use existing tools (`Shell` for running tests, `GrepTool`/`FileViewer` for code checks, LLM prompts for self-assessment) to execute validation. Log results to Memdir (e.g., `.Evolution/ValidationLogs`).
+    *   **Implement Transition Logic:** Develop the orchestrator logic to trigger transitions (manual via Memdir entry or automatic based on Memdir history analysis), spawn the next stage candidate (potentially sandboxed), run validation, and update the `current_stage` in Memdir status upon success or trigger rollback on failure (using checkpoints).
+    *   **Refine Manifest:** Update `manifest.json` with stage details, validation criteria, and transition rules.
+
+**Medium Priority:**
+
+2.  **Implement MCP Consent UI (Textual):** Implement the UI interaction for `_handle_mcp_consent` in the Textual interface (`fei/ui/textual_chat.py`).
+3.  **Handle Interactive Shell Commands:** Re-implement/fix handlers for `view_process_output`, `send_process_input`, `check_process_status`, `terminate_process` in `fei/tools/handlers.py` and ensure `ShellRunner` correctly manages background processes and PIDs. This is crucial for running interactive code like the Snake game or validation scripts.
+4.  **Improve Tool Call Reliability:** Continue refining prompts, consider fallback parsing logic, and evaluate different LLM models for tool use accuracy.
+5.  **Testing:** Add tests specifically for the self-evolution logic (stage loading, checkpointing, validation, transition) and Memdir interactions.
+
+**Low Priority / Done:**
+
+6.  **Refactor `ProcessManager` Cleanup (Completed):** Removed `atexit`.
+7.  **Improve MCP Server Readiness Check (Completed):** Implemented handshake.
+8.  **Complete Snake Game Task (Partially Done):** Manual correction done. Verification pending interactive shell tools.
+9.  **Debug TaskExecutor Loop (Lower Priority):** Monitor during evolution implementation.
+10. **Implement MCP Consent UI (CLI) (Completed):** Implemented in `cli.py`.
 
 ## Plan: Handling Interactive Shell Commands
 

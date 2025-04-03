@@ -12,10 +12,12 @@ import json
 import logging
 from typing import Dict, List, Any, Optional, Union
 
+import os # Import os for environment variable access
 from fei.tools.registry import ToolRegistry
 from fei.tools.memdir_connector import MemdirConnector
 from fei.tools.memorychain_connector import MemorychainConnector
 from fei.utils.logging import get_logger
+from fei.utils.config import get_config # Import get_config
 
 logger = get_logger(__name__)
 
@@ -154,9 +156,9 @@ def memory_search_handler(args: Dict[str, Any]) -> Dict[str, Any]:
         Search results
     """
     try:
-        # Initialize connector with auto-start enabled
+        # Initialize connector - let its __init__ handle API key resolution
         connector = MemdirConnector(auto_start=True)
-        
+
         # First check if the server is available
         if not connector.start_server_command():
             return {
@@ -226,9 +228,10 @@ def memory_create_handler(args: Dict[str, Any]) -> Dict[str, Any]:
         Result of memory creation
     """
     try:
-        # Initialize connector with auto-start enabled
-        connector = MemdirConnector(auto_start=True)
-        
+        # Read API key ONLY from environment variable
+        api_key = os.environ.get("MEMDIR_API_KEY")
+        connector = MemdirConnector(api_key=api_key, auto_start=True)
+
         # First check if the server is available and start it if needed
         start_result = connector.start_server_command()
         if start_result["status"] not in ["started", "already_running"]:
@@ -280,9 +283,10 @@ def memory_view_handler(args: Dict[str, Any]) -> Dict[str, Any]:
         Memory details
     """
     try:
-        # Initialize connector with auto-start enabled
-        connector = MemdirConnector(auto_start=True)
-        
+        # Read API key ONLY from environment variable
+        api_key = os.environ.get("MEMDIR_API_KEY")
+        connector = MemdirConnector(api_key=api_key, auto_start=True)
+
         # First check if the server is available and start it if needed
         start_result = connector.start_server_command()
         if start_result["status"] not in ["started", "already_running"]:
@@ -328,9 +332,10 @@ def memory_list_handler(args: Dict[str, Any]) -> Dict[str, Any]:
         List of memories
     """
     try:
-        # Initialize connector with auto-start enabled
-        connector = MemdirConnector(auto_start=True)
-        
+        # Read API key ONLY from environment variable
+        api_key = os.environ.get("MEMDIR_API_KEY")
+        connector = MemdirConnector(api_key=api_key, auto_start=True)
+
         # First check if the server is available and start it if needed
         start_result = connector.start_server_command()
         if start_result["status"] not in ["started", "already_running"]:
@@ -390,9 +395,10 @@ def memory_delete_handler(args: Dict[str, Any]) -> Dict[str, Any]:
         Result of deletion
     """
     try:
-        # Initialize connector with auto-start enabled
-        connector = MemdirConnector(auto_start=True)
-        
+        # Read API key ONLY from environment variable
+        api_key = os.environ.get("MEMDIR_API_KEY")
+        connector = MemdirConnector(api_key=api_key, auto_start=True)
+
         # First check if the server is available and start it if needed
         start_result = connector.start_server_command()
         if start_result["status"] not in ["started", "already_running"]:
@@ -431,9 +437,10 @@ def memory_search_by_tag_handler(args: Dict[str, Any]) -> Dict[str, Any]:
         Search results
     """
     try:
-        # Initialize connector with auto-start enabled
-        connector = MemdirConnector(auto_start=True)
-        
+        # Read API key ONLY from environment variable
+        api_key = os.environ.get("MEMDIR_API_KEY")
+        connector = MemdirConnector(api_key=api_key, auto_start=True)
+
         # First check if the server is available and start it if needed
         start_result = connector.start_server_command()
         if start_result["status"] not in ["started", "already_running"]:
@@ -483,8 +490,10 @@ def memdir_server_start_handler(args: Dict[str, Any]) -> Dict[str, Any]:
         Status dictionary
     """
     try:
-        # Create connector with auto-start enabled
-        connector = MemdirConnector(auto_start=True)
+        # Read API key ONLY from environment variable for consistency
+        api_key = os.environ.get("MEMDIR_API_KEY")
+        # Pass the resolved API key to the connector instance
+        connector = MemdirConnector(api_key=api_key, auto_start=True)
         return connector.start_server_command()
     except Exception as e:
         logger.error(f"Error starting Memdir server: {e}")

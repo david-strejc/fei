@@ -57,7 +57,8 @@ class TestGlobFinder(unittest.TestCase):
     def test_find_with_ignore(self):
         """Test find_with_ignore method"""
         # Find Python files, ignoring subdir
-        py_files = self.finder.find_with_ignore("**/*.py", ["subdir"])
+        # Use "subdir/*" to match files within the directory
+        py_files = self.finder.find_with_ignore("**/*.py", ["subdir/*"])
         self.assertEqual(len(py_files), 2)
 
 
@@ -133,7 +134,8 @@ class TestCodeEditor(unittest.TestCase):
     def test_edit_file(self):
         """Test edit_file method"""
         # Edit file
-        success, message = self.editor.edit_file(
+        # Unpack all three return values: success, message, backup_path
+        success, message, backup_path = self.editor.edit_file(
             self.test_file,
             "    print('test')",
             "    print('edited')"
@@ -209,7 +211,8 @@ class TestDirectoryExplorer(unittest.TestCase):
     def setUp(self):
         """Set up test environment"""
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.explorer = DirectoryExplorer()
+        # Initialize explorer with a GlobFinder based on the temp dir
+        self.explorer = DirectoryExplorer(glob_finder=GlobFinder(self.temp_dir.name))
         
         # Create test files and directories
         os.makedirs(os.path.join(self.temp_dir.name, "subdir"))
