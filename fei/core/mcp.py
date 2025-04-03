@@ -36,6 +36,10 @@ class MCPExecutionError(Exception):
     """Exception raised for MCP execution errors"""
     pass
 
+class MCPConsentDeniedError(Exception):
+    """Exception raised when user denies MCP action consent"""
+    pass
+
 class ProcessManager:
     """Manager for child processes using asyncio"""
 
@@ -43,10 +47,8 @@ class ProcessManager:
         """Initialize process manager"""
         self.processes: Dict[str, asyncio.subprocess.Process] = {}
         self._lock = asyncio.Lock()
-
-        # Register cleanup on exit
-        import atexit
-        atexit.register(self.cleanup_all_sync) # Use a sync wrapper for atexit
+        # NOTE: Removed atexit registration for cleanup. Cleanup should be handled explicitly
+        # by calling MCPManager.stop_all_servers() or MCPClient.close() on application exit.
 
     async def start_process(
         self,
@@ -192,15 +194,38 @@ class ProcessManager:
                  logger.warning(f"Failed to stop process {pid} during async cleanup.")
         logger.info("MCP process cleanup finished.")
 
+    # Removed cleanup_all_sync method as atexit is no longer used.
+
+from typing import Dict, List, Any, Optional, Union, Tuple, Set, Callable, Awaitable
+from contextlib import asynccontextmanager
+
+from fei.utils.logging import get_logger
+from fei.utils.config import Config
+
+logger = get_logger(__name__)
+
+# Type alias for the consent handler function
+ConsentHandler = Callable[[str, str, str, Dict[str, Any]], Awaitable[bool]]
+
+
+class MCPServerConfigError(Exception):
+    """Exception raised for MCP server configuration errors"""
+
 
 class MCPClient:
     """Client for MCP servers"""
 
-    def __init__(self, config: Optional[Config] = None):
+    def __init__(self, config: Optional[Config] = None, consent_handler: Optional[ConsentHandler] = None):
         """
         Initialize MCP client
+
+        Args:
+            config: Configuration object.
+            consent_handler: An async function to call when user consent is needed.
+                             Expected signature: async def handler(server_id, service, method, params) -> bool
         """
         self.config = config or Config()
+        self.consent_handler = consent_handler # Store the consent handler
 
         # Initialize process manager
         self.process_manager = ProcessManager()
@@ -487,36 +512,60 @@ class MCPClient:
         # Start the process
         cmd = [command] + args
         logger.info(f"Starting MCP server: {server_id} with command: {' '.join(cmd)}")
+        READY_SIGNAL = "MCP_SERVER_READY"
+        READINESS_TIMEOUT = 5.0 # Seconds to wait for the ready signal
 
         try:
             process = await self.process_manager.start_process(server_id, cmd, env=env_vars)
 
-            # Improved readiness check: Try to read stderr or wait a short time
+            # --- Robust Readiness Check ---
+            logger.debug(f"Waiting for '{READY_SIGNAL}' from {server_id} (timeout: {READINESS_TIMEOUT}s)")
+            ready = False
+            stderr_output = ""
             try:
-                # Wait briefly for potential immediate errors on stderr
-                # Readline might block indefinitely if no newline is sent, use readuntil or read(n)
-                # Let's just wait a fixed short time for simplicity here
-                await asyncio.sleep(1.5) # Give server a moment to start/fail
+                # Read stdout line by line until ready signal or timeout
+                while True: # Loop until break, timeout, or error
+                    try:
+                        # Read a line with timeout
+                        line_bytes = await asyncio.wait_for(process.stdout.readline(), timeout=READINESS_TIMEOUT)
+
+                        if not line_bytes: # EOF reached - process likely exited
+                            logger.warning(f"EOF reached on stdout for {server_id} before ready signal.")
+                            break # Exit loop, check return code below
+
+                        line = line_bytes.decode('utf-8', errors='ignore').strip()
+                        logger.debug(f"[{server_id} stdout] {line}") # Log server output during startup
+
+                        if READY_SIGNAL in line:
+                            logger.info(f"MCP server {server_id} reported ready (PID: {process.pid}).")
+                            ready = True
+                            break # Exit loop, server is ready
+
+                    except asyncio.TimeoutError:
+                        logger.error(f"Timeout waiting for ready signal '{READY_SIGNAL}' from {server_id}.")
+                        break # Exit loop on timeout
+
+                # Check if process exited prematurely after the loop
                 if process.returncode is not None:
-                     stderr_output = ""
                      try:
-                         # Try reading stderr if process exited quickly
+                         # Try reading stderr if process exited
                          stderr_bytes = await asyncio.wait_for(process.stderr.read(), timeout=0.5)
                          stderr_output = stderr_bytes.decode('utf-8', errors='ignore')
-                     except asyncio.TimeoutError:
-                         pass # No stderr output quickly
-                     except Exception as read_err:
-                         logger.warning(f"Error reading stderr after quick exit for {server_id}: {read_err}")
-                     raise MCPServerConfigError(f"MCP server {server_id} exited immediately (return code: {process.returncode}). Stderr: {stderr_output[:500]}")
+                     except asyncio.TimeoutError: pass
+                     except Exception: pass # Ignore errors reading stderr on exit
+                     raise MCPServerConfigError(f"MCP server {server_id} exited prematurely (code: {process.returncode}) before signaling ready. Stderr: {stderr_output[:500]}")
 
-                logger.info(f"MCP server {server_id} appears started (PID: {process.pid}).")
+                if not ready:
+                     # If loop finished without ready signal and process hasn't exited (timeout case)
+                     raise MCPServerConfigError(f"MCP server {server_id} did not signal readiness within {READINESS_TIMEOUT}s.")
 
-            except asyncio.TimeoutError:
-                 # This timeout is for the stderr read, not critical if it passes
-                 logger.info(f"MCP server {server_id} starting (PID: {process.pid})... (No immediate stderr)")
-            except Exception as start_check_err:
-                 logger.warning(f"Error during initial check for {server_id}: {start_check_err}")
-
+            except Exception as readiness_err:
+                 # Catch any other errors during readiness check
+                 logger.error(f"Error during readiness check for {server_id}: {readiness_err}", exc_info=True)
+                 # Attempt to stop the process if it's still running
+                 await self.process_manager.stop_process(server_id)
+                 raise MCPServerConfigError(f"Failed readiness check for {server_id}: {readiness_err}")
+            # --- End Robust Readiness Check ---
 
         except OSError as e:
             logger.error(f"Error starting MCP server {server_id}: {e}", exc_info=True)
@@ -646,6 +695,48 @@ class MCPClient:
         if not target_server_id:
             raise MCPServerConfigError("No MCP server specified and no default server set")
 
+        # --- Consent Check Placeholder ---
+        # TODO: Implement actual consent check logic here.
+        # This should:
+        # 1. Check configuration for consent requirements (allow, deny, ask).
+        # 2. If 'ask', call a handler (passed during MCPClient init or set later)
+        #    to prompt the user for confirmation.
+        # 3. The handler should receive details: target_server_id, service, method, params.
+        # 4. If consent is denied by the handler/user, raise MCPConsentDeniedError.
+        # Example:
+        # consent_required = self._check_consent_config(target_server_id, service, method)
+        # if consent_required == "ask" and self.consent_handler:
+        #     approved = await self.consent_handler(target_server_id, service, method, params)
+        #     if not approved:
+        #         raise MCPConsentDeniedError(f"User denied consent for {service}.{method} on {target_server_id}")
+        # elif consent_required == "deny":
+        #      raise MCPConsentDeniedError(f"Action {service}.{method} on {target_server_id} is denied by configuration.")
+        logger.debug(f"Proceeding with MCP call to {target_server_id} for {service}.{method} (Consent check placeholder)")
+        # --- Consent Check ---
+        consent_policy = self._get_consent_policy(target_server_id, service, method)
+        logger.debug(f"MCP Consent policy for {target_server_id}.{service}.{method}: {consent_policy}")
+
+        if consent_policy == "deny":
+            raise MCPConsentDeniedError(f"Action {service}.{method} on {target_server_id} is denied by configuration.")
+        elif consent_policy == "ask":
+            if not self.consent_handler:
+                raise MCPServerConfigError(f"Consent policy is 'ask' for {service}.{method} on {target_server_id}, but no consent handler is configured.")
+
+            # Call the provided async consent handler
+            try:
+                approved = await self.consent_handler(target_server_id, service, method, params or {})
+                if not approved:
+                    raise MCPConsentDeniedError(f"User denied consent for {service}.{method} on {target_server_id}")
+                logger.debug(f"User approved MCP action: {target_server_id}.{service}.{method}")
+            except Exception as e:
+                 logger.error(f"Error during consent handling for {target_server_id}.{service}.{method}: {e}", exc_info=True)
+                 # Treat errors in consent handling as denial for safety
+                 raise MCPConsentDeniedError(f"Error during consent handling for {service}.{method} on {target_server_id}: {e}")
+
+        # If policy is 'allow' or 'ask' was approved, proceed.
+        # --- End Consent Check ---
+
+
         async with self._ensure_server_running(target_server_id) as server:
             server_type = server.get("type", "http")
 
@@ -707,6 +798,47 @@ class MCPClient:
                 except Exception as e:
                     logger.error(f"Unexpected error in HTTP MCP service call to {target_server_id}: {e}", exc_info=True)
                     raise MCPConnectionError(f"Unexpected error in HTTP MCP service call: {e}")
+
+    def _get_consent_policy(self, server_id: str, service: str, method: str) -> str:
+        """
+        Determine the consent policy based on configuration rules.
+
+        Checks rules in order of specificity:
+        1. server.service.method
+        2. server.service.*
+        3. server.*.*
+        4. *.service.method
+        5. *.service.*
+        6. Default policy
+
+        Returns:
+            'allow', 'deny', or 'ask'
+        """
+        # Use the updated configuration keys
+        rules = self.config.get_dict("mcp.consent_rules", {})
+        default_policy = self.config.get_string("mcp.consent_default_policy", "ask")
+
+        # Define rule patterns to check in order of specificity
+        patterns_to_check = [
+            f"{server_id}.{service}.{method}",
+            f"{server_id}.{service}.*",
+            f"{server_id}.*.*",
+            f"*.{service}.{method}",
+            f"*.{service}.*",
+        ]
+
+        for pattern in patterns_to_check:
+            if pattern in rules:
+                policy = rules[pattern]
+                if policy in ["allow", "deny", "ask"]:
+                    return policy
+                else:
+                    logger.warning(f"Invalid consent policy '{policy}' found for rule '{pattern}'. Using default.")
+                    # Fall through to default if rule value is invalid
+
+        # No specific rule matched, use default
+        return default_policy
+
 
 # Base class for all MCP services
 class MCPBaseService:
@@ -924,12 +1056,17 @@ class MCPGitHubService(MCPBaseService):
 class MCPManager:
     """Manager for MCP services"""
 
-    def __init__(self, config: Optional[Config] = None):
+    def __init__(self, config: Optional[Config] = None, consent_handler: Optional[ConsentHandler] = None):
         """
         Initialize MCP manager
+
+        Args:
+            config: Configuration object.
+            consent_handler: An async function to call when user consent is needed.
         """
         self.config = config or Config()
-        self.client = MCPClient(self.config)
+        # Pass the consent_handler down to the MCPClient
+        self.client = MCPClient(self.config, consent_handler=consent_handler)
 
         # Initialize services (pass the client)
         self.memory = MCPMemoryService(self.client)

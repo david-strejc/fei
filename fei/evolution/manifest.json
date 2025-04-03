@@ -1,0 +1,16 @@
+{
+  "current_stage_id": 0,
+  "stages": [
+    {
+      "id": 0,
+      "name": "Initial Bootstrap",
+      "description": "The initial operational state of the agent before any self-evolution.",
+      "module": "fei.evolution.stages.stage_0",
+      "validation_criteria": [
+        "Basic task execution works.",
+        "Core tools are functional."
+      ],
+      "allowed_transitions": [1]
+    }
+  ]
+}

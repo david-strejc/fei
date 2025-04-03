@@ -403,6 +403,7 @@ Use the background parameter to force running in background or foreground mode."
     }
 }
 
+
 # List of all tool definitions
 TOOL_DEFINITIONS = [
     GLOB_TOOL,

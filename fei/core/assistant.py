@@ -10,7 +10,7 @@ import os
 import json
 import asyncio
 import logging # Add missing import
-from typing import Dict, List, Any, Optional, Union, Tuple
+from typing import Dict, List, Any, Optional, Union, Tuple, Callable, Awaitable
 from functools import lru_cache
 
 from litellm import completion as litellm_completion
@@ -19,9 +19,13 @@ from litellm.exceptions import ServiceUnavailableError, APIError, InvalidRequest
 from fei.tools.registry import ToolRegistry
 from fei.utils.logging import get_logger
 from fei.utils.config import Config
-from fei.core.mcp import MCPManager
+from fei.core.mcp import MCPManager, MCPConsentDeniedError # Import the error
 
 logger = get_logger(__name__)
+
+# Type alias for the UI function that asks the user for consent
+# It should take a prompt string and return True (approved) or False (denied)
+ConsentUiProvider = Callable[[str], Awaitable[bool]]
 
 class ProviderManager:
     """Manages provider configuration and API key handling"""
@@ -337,7 +341,8 @@ class Assistant:
         model: Optional[str] = None,
         provider: Optional[str] = None,
         tool_registry: Optional[ToolRegistry] = None,
-        mcp_manager: Optional[MCPManager] = None
+        mcp_manager: Optional[MCPManager] = None,
+        consent_ui_provider: Optional[ConsentUiProvider] = None # Add consent UI provider
     ):
         """
         Initialize the assistant
@@ -349,16 +354,21 @@ class Assistant:
             provider: Provider to use (anthropic, openai, etc.)
             tool_registry: Tool registry instance
             mcp_manager: MCP manager instance
+            consent_ui_provider: Async function to ask user for consent via UI.
         """
         self.config = config or Config()
+        self.consent_ui_provider = consent_ui_provider # Store the UI provider
         
         # Initialize component managers
         self.provider_manager = ProviderManager(self.config, provider, api_key)
         self.provider = self.provider_manager.provider
         self.model = model or self.provider_manager.model
         
-        # Initialize MCP manager first as it might be needed by tools
-        self.mcp_manager = mcp_manager or MCPManager(self.config)
+        # Initialize MCP manager first, passing the consent handler
+        self.mcp_manager = mcp_manager or MCPManager(
+            self.config,
+            consent_handler=self._handle_mcp_consent # Pass the method reference
+        )
         
         # Initialize tool manager
         self.tool_manager = ToolManager(self.provider, tool_registry, self.mcp_manager)
@@ -686,6 +696,67 @@ class Assistant:
             self.conversation_manager.add_assistant_message(error_msg)
             return error_msg
     
+    async def _handle_mcp_consent(
+        self,
+        server_id: str,
+        service: str,
+        method: str,
+        params: Dict[str, Any]
+    ) -> bool:
+        """
+        Placeholder for handling MCP consent requests.
+
+        This method should eventually interact with the UI (CLI or Textual)
+        to ask the user for permission.
+
+        Args:
+            server_id: The ID of the MCP server requesting action.
+            service: The name of the service being called.
+            method: The name of the method being called.
+            params: The parameters for the method call.
+
+        Returns:
+            True if consent is granted, False otherwise.
+        """
+        # TODO: Implement actual UI interaction for consent.
+        # This might involve checking if running in CLI or Textual mode
+        # and using the appropriate mechanism (input() or Textual widget).
+        logger.warning(
+            f"MCP Consent requested for {server_id}.{service}.{method} with params: {params}. "
+            f"Placeholder automatically granting consent. IMPLEMENT ACTUAL CONSENT UI!"
+        )
+        # For now, default to allowing the action.
+        # In a real implementation, this would return the user's choice.
+        # return True # Remove the automatic grant
+
+        if not self.consent_ui_provider:
+            logger.error(f"MCP Consent required for {server_id}.{service}.{method}, but no consent UI provider is configured. Denying.")
+            return False # Deny if no UI provider is available
+
+        # Construct a user-friendly prompt
+        prompt = (
+            f"Fei wants to perform the following action using MCP server '{server_id}':\n"
+            f"  Service: {service}\n"
+            f"  Method:  {method}\n"
+            f"  Params:  {json.dumps(params, indent=2)}\n\n"
+            f"Do you approve this action? (yes/no): "
+        )
+
+        try:
+            # Call the UI provider to get user consent
+            approved = await self.consent_ui_provider(prompt)
+            if approved:
+                logger.info(f"User approved MCP action: {server_id}.{service}.{method}")
+                return True
+            else:
+                logger.info(f"User denied MCP action: {server_id}.{service}.{method}")
+                return False
+        except Exception as e:
+            logger.error(f"Error getting user consent via UI for {server_id}.{service}.{method}: {e}", exc_info=True)
+            # Deny on error for safety
+            return False
+
+
     def reset_conversation(self) -> None:
         """Reset the conversation history"""
         self.conversation_manager.reset()

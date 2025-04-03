@@ -68,6 +68,16 @@ CONFIG_SCHEMA = {
     "mcp": {
         "default_server": {"type": ConfigValueType.STRING},
         "servers": {"type": ConfigValueType.DICT},
+        # Renamed consent keys to be direct children of 'mcp'
+        "consent_default_policy": {
+            "type": ConfigValueType.STRING,
+            "default": "ask",
+            "choices": ["ask", "allow", "deny"]
+        },
+        "consent_rules": { # Dictionary for specific overrides
+            "type": ConfigValueType.DICT,
+            "default": {}
+        }
     },
     "user": {
         "default_model": {"type": ConfigValueType.STRING},

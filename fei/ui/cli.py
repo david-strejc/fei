@@ -8,8 +8,9 @@ import sys
 import asyncio
 import argparse
 import readline
-import atexit
+# Removed atexit import as it's no longer used for MCP cleanup
 import json
+import signal # Import signal module
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Deque
 from collections import deque
@@ -38,6 +39,7 @@ from fei.tools.handlers import (
 from fei.tools.definitions import TOOL_DEFINITIONS
 from fei.utils.config import Config
 from fei.utils.logging import get_logger
+from fei.core.assistant import ConsentUiProvider # Import the type alias
 
 logger = get_logger(__name__)
 
@@ -68,6 +70,7 @@ class CLI:
         self.history = deque(maxlen=100)  # Store last 100 messages
         self.history_file = self.get_history_file_path()
         self.setup_history()
+        self.loop = asyncio.get_event_loop() # Store the loop for executor calls
     
     def get_history_file_path(self) -> Path:
         """Get the path to the history file"""
@@ -106,7 +109,8 @@ class CLI:
             except FileNotFoundError:
                 pass
             
-            # Register to save readline history at exit
+            # Register to save readline history at exit using atexit
+            import atexit # Import atexit here specifically for readline history
             atexit.register(readline.write_history_file, readline_history_file)
             
             # Configure readline
@@ -146,8 +150,37 @@ class CLI:
         
         return registry
     
+    async def _cli_consent_provider(self, prompt: str) -> bool:
+        """
+        Asks the user for consent via the command line.
+        Uses input() run in an executor to avoid blocking asyncio.
+        """
+        print(colorize("\n--- MCP Consent Required ---", "yellow"))
+        print(prompt)
+        
+        while True:
+            try:
+                # Run blocking input() in a separate thread
+                response = await self.loop.run_in_executor(None, input)
+                response = response.strip().lower()
+                if response in ['yes', 'y']:
+                    print(colorize("Consent granted.", "green"))
+                    return True
+                elif response in ['no', 'n']:
+                    print(colorize("Consent denied.", "red"))
+                    return False
+                else:
+                    print(colorize("Please answer 'yes' or 'no'.", "yellow"))
+            except EOFError:
+                 print(colorize("\nInput stream closed. Denying consent.", "red"))
+                 return False # Treat EOF as denial
+            except Exception as e:
+                 logger.error(f"Error during CLI consent input: {e}", exc_info=True)
+                 print(colorize(f"An error occurred: {e}. Denying consent.", "red"))
+                 return False # Deny on error
+
     def setup_assistant(self, api_key: Optional[str] = None, model: Optional[str] = None, provider: Optional[str] = None) -> Assistant:
-        """Set up assistant"""
+        """Set up assistant, passing the CLI consent provider"""
         # The API key check is now handled inside the Assistant class
         # based on the selected provider
         
@@ -156,7 +189,8 @@ class CLI:
             api_key=api_key,
             model=model,
             provider=provider,
-            tool_registry=self.tool_registry
+            tool_registry=self.tool_registry,
+            consent_ui_provider=self._cli_consent_provider # Pass the CLI consent method
         )
     
     def print_welcome(self) -> None:
@@ -642,7 +676,8 @@ async def handle_ask_command(args: argparse.Namespace) -> None:
         except FileNotFoundError:
             pass
         
-        # Register to save readline history at exit
+        # Register to save readline history at exit using atexit
+        import atexit # Import atexit here specifically for readline history
         atexit.register(readline.write_history_file, readline_history_file)
         readline.set_history_length(100)
         
@@ -747,6 +782,26 @@ def run_async_command(coro):
         # No event loop exists, use asyncio.run
         return asyncio.run(coro)
 
+async def _handle_exit_signal(cli_instance: 'CLI', sig: signal.Signals):
+    """Handle exit signals gracefully."""
+    logger.info(f"Received exit signal {sig.name}, shutting down...")
+    print(colorize(f"\nReceived {sig.name}. Cleaning up MCP servers...", "yellow"))
+    if cli_instance and cli_instance.assistant and cli_instance.assistant.mcp_manager:
+        try:
+            await cli_instance.assistant.mcp_manager.stop_all_servers()
+            print(colorize("MCP cleanup complete.", "green"))
+        except Exception as e:
+            logger.error(f"Error during MCP cleanup on exit: {e}", exc_info=True)
+            print(colorize(f"Error during MCP cleanup: {e}", "red"))
+    else:
+        print(colorize("CLI or Assistant not fully initialized, skipping MCP cleanup.", "yellow"))
+
+    # Optionally re-raise signal or exit
+    # For now, just let the main loop terminate or raise KeyboardInterrupt
+    # If using asyncio.run, it might handle KeyboardInterrupt automatically.
+    # If managing the loop manually, might need sys.exit here.
+
+
 def main() -> None:
     """Main entry point"""
     args = parse_args()
@@ -780,10 +835,39 @@ def main() -> None:
         else:
             # Default to chat
             cli = CLI()
-            run_async_command(cli.run(args))
-            
+            loop = asyncio.get_event_loop()
+
+            # Register signal handlers
+            for sig in (signal.SIGINT, signal.SIGTERM):
+                loop.add_signal_handler(
+                    sig,
+                    lambda s=sig: asyncio.create_task(_handle_exit_signal(cli, s))
+                )
+
+            try:
+                run_async_command(cli.run(args))
+            finally:
+                # Remove signal handlers after execution
+                logger.debug("Removing signal handlers.")
+                for sig in (signal.SIGINT, signal.SIGTERM):
+                    loop.remove_signal_handler(sig)
+                # Ensure MCP cleanup runs even if not interrupted by signal (e.g., normal exit)
+                # Check if assistant was initialized before trying cleanup
+                if cli.assistant and cli.assistant.mcp_manager:
+                     logger.info("Performing final MCP cleanup on exit...")
+                     # Use run_until_complete if loop is not running, otherwise await
+                     if not loop.is_running():
+                         loop.run_until_complete(cli.assistant.mcp_manager.stop_all_servers())
+                     else:
+                         # This path might be less common if run_async_command uses asyncio.run
+                         # which closes the loop. Consider if explicit await is needed here.
+                         pass # Cleanup likely handled by signal or run_async_command completion
+                     logger.info("Final MCP cleanup finished.")
+
+
     except KeyboardInterrupt:
-        print(colorize("\nInterrupted by user. Goodbye!", "bold"))
+        # Signal handler should manage cleanup, just print message here
+        print(colorize("\nInterrupted by user. Exiting.", "bold"))
     except Exception as e:
         print(colorize(f"\nError: {e}", "red"))
         if args.debug:

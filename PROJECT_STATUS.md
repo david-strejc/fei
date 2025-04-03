@@ -1,4 +1,4 @@
-# Fei Agent Project Status - 2025-03-30
+# Fei Agent Project Status - 2025-04-03
 
 ## Summary
 
@@ -24,6 +24,10 @@ We tested the agent's ability to autonomously generate a Snake game using Pygame
 *   The `Replace` tool handler is now correctly implemented.
 *   Basic logging (`fei_agent.log`) and debug logging (`--debug`) are functional.
 *   The agent successfully generated the first ~5 steps of the Snake game code and called the `Replace` tool multiple times in the last run, creating `snake_game_final.py`.
+*   **MCP Consent Framework:** Basic structure implemented in `mcp.py` and `assistant.py` to check configured policies and call a UI handler (placeholder in `assistant.py`, basic implementation in `cli.py`). Configuration schema updated in `config.py`. Unit tests added and passing.
+*   **MCP Process Cleanup:** Refactored `ProcessManager` in `mcp.py` to remove unreliable `atexit` cleanup. Added signal handling in `cli.py` for graceful shutdown.
+*   **MCP Readiness Check:** Implemented a basic handshake mechanism in `mcp.py` for stdio servers using `MCP_SERVER_READY` signal.
+*   **Self-Evolution Framework:** Basic directory structure (`fei/evolution`, `fei/evolution/stages`) and initial manifest file (`manifest.json`) created.
 
 ## Architecture & Code Review (2025-04-03)
 
@@ -47,23 +51,25 @@ Based on a review of core files (`assistant.py`, `task_executor.py`, `registry.p
 1.  **Critical - Missing MCP Security/Consent Flows:** The `fei/core/mcp.py` client currently lacks explicit user consent checks before accessing resources or executing tools via MCP. This is a critical deviation from the MCP specification's Security and Trust & Safety guidelines and must be addressed before enabling broader MCP interactions, especially for self-evolution.
 2.  **Incomplete Task Execution:** In the last run, the agent stopped after 5 iterations despite the task requiring ~11 steps and the `[TASK_COMPLETE]` signal not being present. The `TaskExecutor` loop might still have issues with its loop termination or iteration logic, potentially related to its reliance on the LLM for state management.
 3.  **LLM Tool Use Reliability (Gemini):** The Gemini model still seems unreliable in consistently generating correctly formatted tool calls, even with detailed prompts. It often defaults to text descriptions.
-4.  **Interactive Shell Commands:** The agent currently lacks a mechanism to handle long-running or interactive shell commands effectively (e.g., running the generated Pygame). The `Shell` tool executes commands, but feedback/control for interactive sessions is missing.
-5.  **MCP Cleanup Errors (Tests):** Console logs during `pytest` runs show `RuntimeError: no running event loop` and `ValueError: I/O operation on closed file`. This likely originates from the problematic use of `atexit` for cleaning up asynchronous MCP server processes in `fei/core/mcp.py`'s `ProcessManager`.
-6.  **Tool Call Error Handling:** The agent got stuck asking for a corrected tool when the `Replace` tool handler failed due to the unpacking error. Error handling within the `TaskExecutor` could be more robust.
+4.  **Interactive Shell Commands:** The agent currently lacks a mechanism to handle long-running or interactive shell commands effectively. The `Shell` tool's background execution logic was refined, but the necessary process management tools (`view_process_output`, `send_process_input`, etc.) could not be implemented due to persistent syntax errors.
+5.  **MCP Cleanup Errors (Tests):** (Potentially Resolved) Console logs during `pytest` runs showed errors likely related to `atexit`. This should be re-verified after the refactor removing `atexit`.
+6.  **Tool Call Error Handling:** The agent previously got stuck asking for a corrected tool when handlers failed due to unpacking errors (fixed for `Replace`, `Edit`). Error handling within the `TaskExecutor` could still be more robust for other tool failures.
+7.  **Process Management Tool Implementation:** Repeated attempts to implement handlers for process management tools (`view_process_output`, `send_process_input`, `check_process_status`, `terminate_process`) in `fei/tools/handlers.py` resulted in syntax errors, even when using `write_to_file`. The code was reverted.
 
 ## TODOs / Next Steps
 
-1.  **Implement MCP Consent/Security Flows (Highest Priority):** Design and integrate explicit user confirmation steps (potentially configurable) within the agent's workflow before accessing MCP resources or executing MCP tools. Ensure adherence to MCP specification security guidelines. This is critical before enabling broader autonomous actions or self-evolution involving external data/tools.
-2.  **Refactor `ProcessManager` Cleanup:** Investigate and implement alternative strategies to `atexit` for reliably cleaning up asynchronous MCP server processes on agent exit (e.g., using signal handlers or a dedicated management process).
-3.  **Improve MCP Server Readiness Check:** Implement a more robust handshake or health check mechanism for stdio servers instead of relying solely on `asyncio.sleep`.
-4.  **Complete Snake Game Task:** Re-run the agent with increased `--max-iterations` (e.g., 15) to allow it to finish all 11 steps of the Snake game generation. Verify the final `snake_game_final.py` is complete and functional. *(Note: This was partially completed, but a full run is still needed for verification)*.
-5.  **Debug TaskExecutor Loop:** Investigate why the `TaskExecutor` stopped prematurely in past runs and assess the fragility of its state management approach.
+1.  **Implement MCP Consent/Security Flows (In Progress):** Basic framework implemented (config schema, client logic, placeholder handler, CLI provider). **Next:** Implement actual UI interaction in `_handle_mcp_consent` (or delegate to UI layer) for both CLI and Textual modes. Add more granular configuration options.
+2.  **Refactor `ProcessManager` Cleanup (Completed):** Removed `atexit` and added signal handling in `cli.py`.
+3.  **Improve MCP Server Readiness Check (Completed):** Implemented basic handshake mechanism using `MCP_SERVER_READY` signal. **Note:** Servers need to be updated to emit this signal.
+4.  **Complete Snake Game Task (Partially Done):** Re-ran the agent with `--max-iterations 5`. It made progress but hit the limit. The generated `snake_game_final.py` was manually corrected. **Next:** Verify the corrected game runs.
+5.  **Debug TaskExecutor Loop:** Investigate why the `TaskExecutor` stopped prematurely in past runs and assess the fragility of its state management approach. (Lower priority for now as recent runs completed iterations).
 6.  **Improve Tool Call Reliability:**
     *   Further refine prompts for Gemini tool use.
     *   Consider adding logic to the `Assistant` or `TaskExecutor` to parse code/actions from text responses as a fallback if structured tool calls fail.
     *   Evaluate if other models (GPT-4o, Claude 3) exhibit more reliable tool use behavior for complex tasks.
-7.  **Handle Interactive Shell Commands:** Implement a strategy for managing interactive processes spawned by the `Shell` tool. (See Plan below).
-8.  **Integrate Self-Evolution Framework:** Begin implementing the self-evolution stages using Memdir, ensuring MCP security flows are addressed first.
+7.  **Handle Interactive Shell Commands (Deferred):** Implementation of process management tools (`view_process_output`, etc.) encountered persistent syntax errors and was reverted. **Next:** Carefully re-implement or fix the handlers in `fei/tools/handlers.py` and corresponding definitions/registrations. This is needed for running/testing interactive code like the Snake game.
+8.  **Integrate Self-Evolution Framework (In Progress):** Basic structure created (`fei/evolution`, `manifest.json`). **Next:** Implement logic for loading stages based on manifest, checkpointing, validation, and transition triggers using Memdir.
+9.  **Testing:** Add more comprehensive unit and integration tests, especially for MCP interactions and the Task Executor. Verify MCP cleanup error (Issue 5) is resolved.
 
 ## Plan: Handling Interactive Shell Commands
 

@@ -1615,45 +1615,20 @@ class ShellRunner:
                             self.running_processes.pop(pid, None)
                 
                 # Start the termination timer in a separate thread
-                timer_thread = threading.Thread(target=terminate_after_timeout, daemon=True)
-                timer_thread.start()
-                
-                # Wait for a short time to capture initial output
-                time.sleep(0.5)
-                
-                # Read any initial output without blocking
-                stdout = ""
-                stderr = ""
-                
-                try:
-                    # Try to read without blocking
-                    import select
-                    readable, _, _ = select.select([process.stdout, process.stderr], [], [], 0.1)
-                    
-                    if process.stdout in readable:
-                        stdout = process.stdout.read(4096)
-                    
-                    if process.stderr in readable:
-                        stderr = process.stderr.read(4096)
-                        
-                except (ImportError, AttributeError, IOError):
-                    # Fall back to communicate with timeout
-                    try:
-                        stdout, stderr = process.communicate(timeout=0.1)
-                    except subprocess.TimeoutExpired:
-                        stdout = f"Process started in background (PID: {pid})"
-                        stderr = f"Process timeout set to {cmd_timeout} seconds"
-                
+                    timer_thread = threading.Thread(target=terminate_after_timeout, daemon=True)
+                    timer_thread.start()
+
+                # Return immediately after launching the background process
                 return {
-                    "success": True,
-                    "stdout": stdout or f"Process started in background (PID: {pid})",
-                    "stderr": stderr or f"Process timeout set to {cmd_timeout} seconds",
-                    "exit_code": 0,
+                    "success": True, # Indicates process started successfully
+                    "stdout": f"Process started in background (PID: {pid}).",
+                    "stderr": "", # No immediate stderr captured
+                    "exit_code": None, # Exit code is unknown for background process
                     "background": True,
                     "pid": pid,
-                    "note": f"Interactive command running in background. Will be terminated after {cmd_timeout} seconds."
+                    "note": f"Process running in background. Will be terminated after {cmd_timeout} seconds if not finished."
                 }
-                
+
             except Exception as e:
                 logger.error(f"Error executing background command: {e}")
                 return {
