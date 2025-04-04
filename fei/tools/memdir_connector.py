@@ -173,28 +173,60 @@ class MemdirConnector:
                 "memdir_tools.run_server",
                 "--port",
                 str(self._port),
-                "--api-key",
-                self.api_key
+                # The server script should ideally read the API key from its environment
+                # "--api-key", # Remove direct CLI arg for API key
+                # self.api_key
             ]
+
+            # Fetch data_dir from config to pass as command-line argument
+            config = get_config()
+            data_dir = config.get("memdir", {}).get("data_dir")
+            logger.info(f"Connector fetched data_dir from config: {data_dir}") # ADDED LOGGING
+            if data_dir:
+                cmd.extend(["--data-dir", data_dir])
+                logger.info(f"Adding --data-dir {data_dir} to server command.")
+            else:
+                logger.warning("memdir.data_dir not found in config, server will use its default.")
+
+            # Prepare environment for the subprocess (API key, URL, Data Dir)
+            server_env = os.environ.copy()
+            server_env["MEMDIR_API_KEY"] = self.api_key # Ensure the key is passed via env
+            server_env["MEMDIR_SERVER_URL"] = self.server_url # Pass URL via env
+            if data_dir: # data_dir was fetched from config earlier
+                server_env["MEMDIR_DATA_DIR"] = data_dir # Explicitly add to env for subprocess
+                logger.info(f"Adding MEMDIR_DATA_DIR={data_dir} to server subprocess environment.")
+            else: # ADDED ELSE FOR LOGGING
+                logger.warning("data_dir is None or empty, MEMDIR_DATA_DIR not added to server env.") # ADDED LOGGING
+
+            # ADDED LOGGING FOR FULL ENV - Use debug level
+            logger.debug(f"Full server_env passed to Popen includes MEMDIR_DATA_DIR: {server_env.get('MEMDIR_DATA_DIR')}")
+
 
             log_dir = os.path.join(os.path.expanduser("~"), ".memdir_logs")
             os.makedirs(log_dir, exist_ok=True)
-            log_file = os.path.join(log_dir, "memdir_server.log")
+            log_file = os.path.join(log_dir, f"memdir_server_{self._port}.log") # Port-specific log
             f_log = open(log_file, 'a')
+
+            logger.info(f"Starting server subprocess with command: {' '.join(cmd)}")
+            logger.info(f"Server subprocess environment includes: MEMDIR_API_KEY='{server_env['MEMDIR_API_KEY']}', MEMDIR_SERVER_URL='{server_env['MEMDIR_SERVER_URL']}'")
 
             if os.name == 'nt':
                 MemdirConnector._server_process = subprocess.Popen(
                     cmd,
                     stdout=f_log,
                     stderr=f_log,
-                    creationflags=subprocess.DETACHED_PROCESS
+                    env=server_env, # Pass the modified environment
+                    creationflags=subprocess.DETACHED_PROCESS,
+                    cwd=data_dir # Set current working directory for the subprocess
                 )
             else:
                 MemdirConnector._server_process = subprocess.Popen(
                     cmd,
                     stdout=f_log,
                     stderr=f_log,
-                    preexec_fn=os.setpgrp
+                    env=server_env, # Pass the modified environment
+                    preexec_fn=os.setpgrp,
+                    cwd=data_dir # Set current working directory for the subprocess
                 )
 
             # Wait longer for server to start (up to 5 seconds)
@@ -251,11 +283,6 @@ class MemdirConnector:
         Returns:
             True if connected, False otherwise
         """
-        # Skip connection check during object initialization
-        if not hasattr(self, "_initialized_check"):
-            self._initialized_check = True
-            return False
-            
         try:
             # Use a shorter timeout to avoid hanging
             response = requests.get(f"{self.server_url}/health", timeout=1.0)

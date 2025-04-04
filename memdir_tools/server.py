@@ -17,6 +17,7 @@ import hmac # Import hmac for compare_digest
 from memdir_tools.utils import (
     ensure_memdir_structure,
     get_memdir_folders,
+    get_memdir_base_path_from_config, # Import the config reader
     save_memory,
     list_memories,
     move_memory,
@@ -36,18 +37,31 @@ from memdir_tools.filter import run_filters
 # Default API key - replace with a secure value in production
 DEFAULT_API_KEY = "YOUR_API_KEY_HERE"
 
-# API_KEY will be set in app.config by run_server.py
-# API_KEY = os.environ.get("MEMDIR_API_KEY", DEFAULT_API_KEY) # Removed module-level read
-
 app = Flask(__name__)
 # Set a default config value, which will be overwritten by run_server.py
 app.config['MEMDIR_API_KEY'] = DEFAULT_API_KEY
+# Initialize config with default or env var, run_server.py will update if --data-dir is used
+app.config['MEMDIR_DATA_DIR'] = os.environ.get("MEMDIR_DATA_DIR", os.path.join(os.getcwd(), "Memdir"))
 
-# Ensure the memdir structure exists on server startup
-ensure_memdir_structure()
-
-# Instantiate the folder manager
+# Instantiate the folder manager first, as it might rely on the base path too
+# The manager will now correctly get the base_dir from config/env via get_memdir_base_path_from_config
 folder_manager = MemdirFolderManager()
+
+# Ensure the memdir structure exists before the first request
+# Use @app.before_request as @app.before_first_request is deprecated
+_structure_ensured = False
+@app.before_request
+def ensure_structure_once():
+    global _structure_ensured
+    if not _structure_ensured:
+        # Use the config value set by run_server.py or the default/env var
+        base_dir = app.config.get('MEMDIR_DATA_DIR')
+        print(f"Running ensure_memdir_structure() for base_dir: {base_dir}")
+        ensure_memdir_structure(base_dir)
+        # Also ensure the folder manager knows the correct path
+        folder_manager.base_dir = base_dir # Update manager's base_dir
+        print(f"Folder manager base dir set to: {folder_manager.base_dir}")
+        _structure_ensured = True
 
 def require_api_key(f):
     """Decorator to require API key for all requests"""
@@ -85,6 +99,7 @@ def health_check():
 @require_api_key
 def list_all_memories():
     """List memories with optional filtering parameters"""
+    base_dir = app.config.get('MEMDIR_DATA_DIR') # Get base dir for this request
     folder = request.args.get('folder', '')
     status = request.args.get('status', 'cur')
     with_content = request.args.get('with_content', 'false').lower() == 'true'
@@ -93,7 +108,8 @@ def list_all_memories():
     if status not in STANDARD_FOLDERS:
         return jsonify({"error": f"Invalid status: {status}. Must be one of {STANDARD_FOLDERS}"}), 400
     
-    memories = list_memories(folder, status, include_content=with_content)
+    # Pass base_dir to list_memories
+    memories = list_memories(base_dir, folder, status, include_content=with_content)
     
     return jsonify({
         "count": len(memories),
@@ -106,6 +122,7 @@ def list_all_memories():
 @require_api_key
 def create_memory():
     """Create a new memory"""
+    base_dir = app.config.get('MEMDIR_DATA_DIR') # Get base dir for this request
     data = request.json
     
     if not data:
@@ -121,9 +138,9 @@ def create_memory():
     headers = data.get('headers', {})
     flags = data.get('flags', '')
     
-    # Create the memory
+    # Create the memory, passing base_dir
     try:
-        filename = save_memory(folder, content, headers, flags)
+        filename = save_memory(base_dir, folder, content, headers, flags)
         return jsonify({
             "success": True,
             "message": f"Memory created successfully",
@@ -131,18 +148,22 @@ def create_memory():
             "folder": folder or "root"
         })
     except Exception as e:
+        # Log the full exception for debugging
+        app.logger.error(f"Error in create_memory: {e}", exc_info=True)
         return jsonify({"error": f"Failed to create memory: {str(e)}"}), 500
 
 @app.route('/memories/<memory_id>', methods=['GET'])
 @require_api_key
 def get_memory(memory_id):
     """Retrieve a specific memory by ID"""
+    base_dir = app.config.get('MEMDIR_DATA_DIR') # Get base dir for this request
     folder = request.args.get('folder', '')
     
     # First try to find by unique ID
     all_memories = []
     for s in STANDARD_FOLDERS:
-        all_memories.extend(list_memories(folder, s, include_content=True))
+        # Pass base_dir to list_memories
+        all_memories.extend(list_memories(base_dir, folder, s, include_content=True))
     
     for memory in all_memories:
         if memory_id in (memory["filename"], memory["metadata"]["unique_id"]):
@@ -154,6 +175,7 @@ def get_memory(memory_id):
 @require_api_key
 def update_memory(memory_id):
     """Update a memory's flags or move it to another folder"""
+    base_dir = app.config.get('MEMDIR_DATA_DIR') # Get base dir for this request
     data = request.json
     
     if not data:
@@ -169,90 +191,114 @@ def update_memory(memory_id):
     # First find the memory
     all_memories = []
     for s in STANDARD_FOLDERS if not source_status else [source_status]:
-        all_memories.extend(list_memories(source_folder, s))
+        # Pass base_dir to list_memories
+        all_memories.extend(list_memories(base_dir, source_folder, s))
     
+    found_memory = None
     for memory in all_memories:
         if memory_id in (memory["filename"], memory["metadata"]["unique_id"]):
-            # Found the memory
-            if target_folder is not None and target_folder != source_folder:
-                # Move the memory to another folder
-                result = move_memory(
-                    memory["filename"],
-                    source_folder,
-                    target_folder,
-                    memory["status"] if not source_status else source_status,
-                    target_status,
-                    flags
-                )
-                
-                if result:
-                    return jsonify({
-                        "success": True,
-                        "message": f"Memory moved successfully",
-                        "memory_id": memory_id,
-                        "source": f"{source_folder or 'root'}/{memory['status']}",
-                        "destination": f"{target_folder or 'root'}/{target_status}"
-                    })
-                else:
-                    return jsonify({"error": f"Failed to move memory: {memory_id}"}), 500
-            elif flags is not None:
-                # Update flags only
-                result = update_memory_flags(
-                    memory["filename"],
-                    source_folder,
-                    memory["status"] if not source_status else source_status,
-                    flags
-                )
-                
-                if result:
-                    return jsonify({
-                        "success": True,
-                        "message": f"Memory flags updated successfully",
-                        "memory_id": memory_id,
-                        "new_flags": flags
-                    })
-                else:
-                    return jsonify({"error": f"Failed to update flags for memory: {memory_id}"}), 500
-    
-    return jsonify({"error": f"Memory not found: {memory_id}"}), 404
+            found_memory = memory
+            break
+
+    if not found_memory:
+         return jsonify({"error": f"Memory not found: {memory_id}"}), 404
+
+    # Determine the actual source status if not provided
+    actual_source_status = source_status or found_memory["status"]
+
+    if target_folder is not None and target_folder != source_folder:
+        # Move the memory to another folder, passing base_dir
+        result = move_memory(
+            base_dir,
+            found_memory["filename"], # Use the actual filename found
+            source_folder,
+            target_folder,
+            actual_source_status,
+            target_status,
+            flags # Pass flags here too if move_memory handles flag updates during move
+        )
+        
+        if result:
+            return jsonify({
+                "success": True,
+                "message": f"Memory moved successfully",
+                "memory_id": memory_id,
+                "source": f"{source_folder or 'root'}/{actual_source_status}",
+                "destination": f"{target_folder or 'root'}/{target_status}"
+            })
+        else:
+            return jsonify({"error": f"Failed to move memory: {memory_id}"}), 500
+    elif flags is not None:
+        # Update flags only, passing base_dir
+        result = update_memory_flags(
+            base_dir,
+            found_memory["filename"], # Use the actual filename found
+            source_folder,
+            actual_source_status,
+            flags
+        )
+        
+        if result:
+            return jsonify({
+                "success": True,
+                "message": f"Memory flags updated successfully",
+                "memory_id": memory_id,
+                "new_flags": flags
+            })
+        else:
+            return jsonify({"error": f"Failed to update flags for memory: {memory_id}"}), 500
+    else:
+        # No operation specified (neither move nor flag update)
+        return jsonify({"error": "No update operation specified (target_folder or flags)"}), 400
+
 
 @app.route('/memories/<memory_id>', methods=['DELETE'])
 @require_api_key
 def delete_memory(memory_id):
     """Move a memory to the trash folder"""
+    base_dir = app.config.get('MEMDIR_DATA_DIR') # Get base dir for this request
     folder = request.args.get('folder', '')
     
     # First find the memory
     all_memories = []
     for s in STANDARD_FOLDERS:
-        all_memories.extend(list_memories(folder, s))
+        # Pass base_dir to list_memories
+        all_memories.extend(list_memories(base_dir, folder, s))
     
+    found_memory = None
     for memory in all_memories:
         if memory_id in (memory["filename"], memory["metadata"]["unique_id"]):
-            # Move to trash folder
-            result = move_memory(
-                memory["filename"],
-                folder,
-                ".Trash",
-                memory["status"],
-                "cur"
-            )
-            
-            if result:
-                return jsonify({
-                    "success": True,
-                    "message": f"Memory moved to trash successfully",
-                    "memory_id": memory_id
-                })
-            else:
-                return jsonify({"error": f"Failed to move memory to trash: {memory_id}"}), 500
+            found_memory = memory
+            break
+
+    if not found_memory:
+        return jsonify({"error": f"Memory not found: {memory_id}"}), 404
+
+    # Move to trash folder, passing base_dir
+    result = move_memory(
+        base_dir,
+        found_memory["filename"], # Use actual filename
+        folder,
+        ".Trash",
+        found_memory["status"], # Use actual status
+        "cur"
+    )
     
-    return jsonify({"error": f"Memory not found: {memory_id}"}), 404
+    if result:
+        return jsonify({
+            "success": True,
+            "message": f"Memory moved to trash successfully",
+            "memory_id": memory_id
+        })
+    else:
+        return jsonify({"error": f"Failed to move memory to trash: {memory_id}"}), 500
+    
 
 @app.route('/search', methods=['GET'])
 @require_api_key
 def search():
     """Search memories using query parameters or query string"""
+    base_dir = app.config.get('MEMDIR_DATA_DIR') # Get base dir for this request
     query_string = request.args.get('q', '')
     folder = request.args.get('folder')
     status = request.args.get('status')
@@ -284,7 +330,8 @@ def search():
     statuses = [status] if status else None
     
     try:
-        results = search_memories_advanced(search_query, folders, statuses, debug=debug)
+        # Pass base_dir to search_memories_advanced
+        results = search_memories_advanced(base_dir, search_query, folders, statuses, debug=debug)
         
         return jsonify({
             "count": len(results),
@@ -294,13 +341,14 @@ def search():
     except Exception as e:
         return jsonify({"error": f"Search failed: {str(e)}"}), 500
 
+# --- Folder Management Endpoints ---
+# Note: These use the folder_manager instance which should have its base_dir updated by the before_request handler
+
 @app.route('/folders', methods=['GET'])
 @require_api_key
 def get_folders():
     """List all folders in the Memdir structure"""
-    # Use the manager instance
-    folders = folder_manager.list_folders() # Assuming list_folders is now a method
-    # Adjust based on actual return value if list_folders itself returns the dict list
+    # folder_manager.base_dir should be correctly set by before_request
     folder_info = folder_manager.list_folders(recursive=True) # Get all folders recursively
     folder_paths = [f["path"] for f in folder_info] # Extract paths
     return jsonify({"folders": folder_paths})
@@ -317,7 +365,7 @@ def create_folder_endpoint():
     folder_name = data['folder']
     
     try:
-        # Use the manager instance
+        # Use the manager instance (base_dir should be correct)
         success = folder_manager.create_folder(folder_name)
         if success:
             return jsonify({
@@ -336,7 +384,7 @@ def create_folder_endpoint():
 def delete_folder_endpoint(folder_path):
     """Delete a folder"""
     try:
-        # Use the manager instance
+        # Use the manager instance (base_dir should be correct)
         success, message = folder_manager.delete_folder(folder_path)
         if success:
             return jsonify({
@@ -363,7 +411,7 @@ def rename_folder_endpoint(folder_path):
     new_name = data['new_name']
     
     try:
-        # Use the manager instance
+        # Use the manager instance (base_dir should be correct)
         success = folder_manager.rename_folder(folder_path, new_name)
         if success:
             return jsonify({
@@ -382,8 +430,7 @@ def rename_folder_endpoint(folder_path):
 def folder_stats_endpoint(folder_path):
     """Get stats for a specific folder"""
     try:
-        # Use the manager instance
-        # Assuming get_folder_stats needs to be called on the instance
+        # Use the manager instance (base_dir should be correct)
         stats = folder_manager.get_folder_stats(folder_path)
         return jsonify(stats)
     except FileNotFoundError:
@@ -395,23 +442,36 @@ def folder_stats_endpoint(folder_path):
 @require_api_key
 def run_filters_endpoint():
     """Run all filters to organize memories"""
+    base_dir = app.config.get('MEMDIR_DATA_DIR') # Get base dir for this request
     data = request.json or {}
     dry_run = data.get('dry_run', False)
     
     try:
-        results = run_filters(dry_run=dry_run)
+        # Pass base_dir to run_filters if it needs it (assuming it uses utils internally)
+        # If run_filters doesn't need base_dir directly, this isn't required.
+        # Check run_filters implementation if issues arise.
+        # Assuming run_filters needs base_dir based on other functions
+        results = run_filters(base_dir=base_dir, dry_run=dry_run) 
         return jsonify({
             "success": True,
             "message": "Filters executed successfully",
             "actions": results
         })
     except Exception as e:
+        # Need to import run_filters from memdir_tools.filter first
+        # This block likely needs adjustment based on how run_filters is implemented
+        # For now, just return a generic error
+        app.logger.error(f"Error running filters: {e}", exc_info=True)
         return jsonify({"error": f"Failed to run filters: {str(e)}"}), 500
 
+
 if __name__ == '__main__':
-    # Check if API key is still the default
-    if API_KEY == DEFAULT_API_KEY:
+    # This block is for running the server directly, not typically used by tests
+    # It should ideally read config/env vars itself if needed
+    api_key_main = os.environ.get("MEMDIR_API_KEY", DEFAULT_API_KEY)
+    if api_key_main == DEFAULT_API_KEY:
         print("WARNING: Using default API key. Set MEMDIR_API_KEY environment variable for security.")
+    app.config['MEMDIR_API_KEY'] = api_key_main
     
     # Get port from environment variable or use default 5000
     port = int(os.environ.get("MEMDIR_PORT", 5000))

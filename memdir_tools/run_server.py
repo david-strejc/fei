@@ -9,7 +9,7 @@ import sys
 import argparse
 import uuid
 import logging
-from memdir_tools.server import app
+# from memdir_tools.server import app # Remove top-level import
 
 def configure_logging(debug=False):
     """Configure logging for the server"""
@@ -30,12 +30,18 @@ def main():
     parser.add_argument("--debug", action="store_true", help="Run in debug mode")
     parser.add_argument("--generate-key", action="store_true", help="Generate a new random API key")
     parser.add_argument("--api-key", help="Set a specific API key (overrides MEMDIR_API_KEY)")
-    
+    parser.add_argument("--data-dir", help="Set the Memdir data directory (overrides MEMDIR_DATA_DIR env var)")
+
     args = parser.parse_args()
-    
+
+    # Determine data directory path first
+    data_dir = args.data_dir or os.environ.get("MEMDIR_DATA_DIR") or os.path.join(os.getcwd(), "Memdir")
+    print(f"Configuring server to use data directory: {data_dir}")
+    app.config['MEMDIR_DATA_DIR'] = data_dir # Set directly in Flask config
+
     # Configure logging
     configure_logging(args.debug)
-    
+
     # Handle API key
     if args.generate_key:
         api_key = str(uuid.uuid4())
@@ -56,6 +62,8 @@ def main():
         api_key = "" # Use empty string if none provided, server decorator will handle default
 
     # Set the API key in the Flask app config
+    # Now import the app, *after* config is set
+    from memdir_tools.server import app
     app.config['MEMDIR_API_KEY'] = api_key
 
     # Start the server

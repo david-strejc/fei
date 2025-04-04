@@ -15,14 +15,15 @@ import shutil
 from typing import Dict, List, Any, Tuple, Optional
 from datetime import datetime
 
+# Import specific utils needed, including the config reader
 from memdir_tools.utils import (
     ensure_memdir_structure,
     get_memdir_folders,
-    list_memories,
-    move_memory,
+    get_memdir_base_path_from_config, # Use this to get base path initially
+    list_memories, # Refactored to accept base_dir
+    move_memory, # Refactored to accept base_dir
     STANDARD_FOLDERS,
     SPECIAL_FOLDERS,
-    MEMDIR_BASE,
     FLAGS
 )
 
@@ -49,8 +50,12 @@ class MemdirFolderManager:
     
     def __init__(self):
         """Initialize folder manager"""
-        # Ensure structure exists
-        ensure_memdir_structure()
+        # Get and store the base directory path
+        # Note: This might still get the default path if called before app config is set.
+        # We will update it in server.py's before_request handler if needed.
+        self.base_dir = get_memdir_base_path_from_config()
+        # Initial ensure_structure might use default path, but will be corrected before requests.
+        ensure_memdir_structure(self.base_dir)
     
     def create_folder(self, folder_path: str) -> bool:
         """
@@ -72,9 +77,9 @@ class MemdirFolderManager:
         # Remove leading/trailing slashes
         folder_path = folder_path.strip("/")
         
-        # Full path to the folder
-        full_path = os.path.join(MEMDIR_BASE, folder_path)
-        
+        # Full path to the folder using the potentially updated self.base_dir
+        full_path = os.path.join(self.base_dir, folder_path)
+
         # Check if folder already exists
         if os.path.exists(full_path):
             return False
@@ -100,10 +105,10 @@ class MemdirFolderManager:
         old_path = old_path.replace("\\", "/").strip("/")
         new_path = new_path.replace("\\", "/").strip("/")
         
-        # Full paths
-        old_full_path = os.path.join(MEMDIR_BASE, old_path)
-        new_full_path = os.path.join(MEMDIR_BASE, new_path)
-        
+        # Full paths using the potentially updated self.base_dir
+        old_full_path = os.path.join(self.base_dir, old_path)
+        new_full_path = os.path.join(self.base_dir, new_path)
+
         # Check if source folder exists and destination doesn't
         if not os.path.exists(old_full_path):
             return False
@@ -135,9 +140,9 @@ class MemdirFolderManager:
         # Clean up folder path
         folder_path = folder_path.replace("\\", "/").strip("/")
         
-        # Full path to the folder
-        full_path = os.path.join(MEMDIR_BASE, folder_path)
-        
+        # Full path to the folder using the potentially updated self.base_dir
+        full_path = os.path.join(self.base_dir, folder_path)
+
         # Check if folder exists
         if not os.path.exists(full_path):
             return (False, f"Folder does not exist: {folder_path}")
@@ -149,15 +154,18 @@ class MemdirFolderManager:
         # Check if folder contains memories
         memories = []
         for status in STANDARD_FOLDERS:
-            memories.extend(list_memories(folder_path, status))
-            
+            # Pass self.base_dir to list_memories
+            memories.extend(list_memories(self.base_dir, folder_path, status))
+
         if memories and not force:
             return (False, f"Folder contains {len(memories)} memories. Use force=True to delete anyway.")
             
-        # Move memories to trash if not force
+        # Move memories to trash if force deleting non-empty folder
         if memories and force:
             for memory in memories:
+                # Pass self.base_dir to move_memory
                 move_memory(
+                    self.base_dir,
                     memory["filename"],
                     folder_path,
                     ".Trash",
@@ -187,10 +195,10 @@ class MemdirFolderManager:
         source_path = source_path.replace("\\", "/").strip("/")
         target_path = target_path.replace("\\", "/").strip("/")
         
-        # Full paths
-        source_full_path = os.path.join(MEMDIR_BASE, source_path)
-        target_full_path = os.path.join(MEMDIR_BASE, target_path)
-        
+        # Full paths using the potentially updated self.base_dir
+        source_full_path = os.path.join(self.base_dir, source_path)
+        target_full_path = os.path.join(self.base_dir, target_path)
+
         # Check if source folder exists
         if not os.path.exists(source_full_path):
             return (False, f"Source folder does not exist: {source_path}")
@@ -227,19 +235,29 @@ class MemdirFolderManager:
         # Clean up folder path
         folder_path = folder_path.replace("\\", "/").strip("/")
         
-        # Get all folders
-        all_folders = get_memdir_folders()
-        
+        # Get all folders using the potentially updated self.base_dir
+        all_folders = get_memdir_folders(self.base_dir) # Pass self.base_dir
+
         # Filter subfolders if needed
         folders_to_process = []
         if include_subfolders:
             for folder in all_folders:
-                if folder == folder_path or (folder.startswith(folder_path) and folder != folder_path):
+                if folder == folder_path or (folder.startswith(folder_path + "/") and folder != folder_path): # Ensure proper subfolder check
                     folders_to_process.append(folder)
         else:
-            if folder_path in all_folders or folder_path == "":
-                folders_to_process = [folder_path]
-                
+            # Check if the specific folder exists
+            target_full_path = os.path.join(self.base_dir, folder_path)
+            if os.path.isdir(target_full_path):
+                 folders_to_process = [folder_path]
+            else:
+                 # Handle case where the exact folder doesn't exist but might be root ""
+                 if folder_path == "" and "" in all_folders:
+                     folders_to_process = [""]
+                 else:
+                     # Raise error or return empty stats if folder not found
+                     raise FileNotFoundError(f"Folder not found: {folder_path}")
+
+
         # Initialize statistics
         stats = {
             "folder": folder_path or "Inbox",
@@ -273,9 +291,9 @@ class MemdirFolderManager:
                 "total_memories": 0
             }
             
-            # Get memories for each status
+            # Get memories for each status, passing self.base_dir
             for status in STANDARD_FOLDERS:
-                memories = list_memories(folder, status)
+                memories = list_memories(self.base_dir, folder, status) # Pass self.base_dir
                 subfolder_stats["memory_counts"][status] = len(memories)
                 subfolder_stats["total_memories"] += len(memories)
                 stats["total_memories"] += len(memories)
@@ -292,7 +310,8 @@ class MemdirFolderManager:
                     if "Tags" in memory["headers"]:
                         tags = [tag.strip() for tag in memory["headers"]["Tags"].split(",")]
                         for tag in tags:
-                            stats["tags"][tag] = stats["tags"].get(tag, 0) + 1
+                            if tag: # Avoid counting empty tags
+                                stats["tags"][tag] = stats["tags"].get(tag, 0) + 1
                             
                     # Update newest/oldest memory
                     memory_date = memory["metadata"]["date"]
@@ -331,49 +350,56 @@ class MemdirFolderManager:
         # Clean up parent folder path
         parent_folder = parent_folder.replace("\\", "/").strip("/")
         
-        # Get all folders
-        all_folders = get_memdir_folders()
-        
+        # Get all folders using stored base_dir
+        all_folders = get_memdir_folders(self.base_dir) # Pass self.base_dir
+
         # Filter by parent folder if specified
         if parent_folder:
             filtered_folders = []
             for folder in all_folders:
                 # Match direct children or all descendants based on recursive flag
                 if recursive:
-                    if folder.startswith(parent_folder) and folder != parent_folder:
-                        filtered_folders.append(folder)
+                     # Match if folder starts with parent_folder/ or is exactly parent_folder (if parent is not root)
+                     if folder.startswith(parent_folder + "/") or (folder == parent_folder and parent_folder != ""):
+                         # Exclude the parent itself unless it's the root being listed recursively
+                         if folder != parent_folder or parent_folder == "":
+                             filtered_folders.append(folder)
                 else:
                     # Direct children only - one level deeper
-                    if folder.startswith(parent_folder + "/") and folder.count("/") == parent_folder.count("/") + 1:
-                        filtered_folders.append(folder)
+                    if folder.startswith(parent_folder + "/") and folder.count("/") == parent_folder.count("/") + (1 if parent_folder else 0) :
+                         filtered_folders.append(folder)
+                    # Handle direct children of root ""
+                    elif parent_folder == "" and "/" not in folder and folder != "":
+                         filtered_folders.append(folder)
+
             folders = filtered_folders
-        else:
+        else: # No parent specified
             if recursive:
-                folders = all_folders
+                folders = all_folders # List all including root ""
             else:
-                # Only top-level folders
-                folders = [f for f in all_folders if "/" not in f and f]
-                
-        # Add root folder if listing top level
-        if not parent_folder and not recursive:
-            folders = [""] + folders
-            
+                # Only top-level folders (no slashes) + root ""
+                folders = [""] + [f for f in all_folders if "/" not in f and f]
+
         # Get information for each folder
         folder_info = []
         for folder in folders:
-            stats = self.get_folder_stats(folder)
-            
-            # Create folder entry
-            entry = {
-                "path": folder or "Inbox",
-                "name": os.path.basename(folder) or "Inbox",
-                "is_special": folder in SPECIAL_FOLDERS,
-                "memory_counts": stats["memory_counts"],
-                "total_memories": stats["total_memories"]
-            }
-            
-            folder_info.append(entry)
-            
+            try: # Add try-except for get_folder_stats
+                stats = self.get_folder_stats(folder) # Uses self.base_dir implicitly via list_memories
+
+                # Create folder entry
+                entry = {
+                    "path": folder or "Inbox",
+                    "name": os.path.basename(folder) or "Inbox",
+                    "is_special": folder in SPECIAL_FOLDERS,
+                    "memory_counts": stats["memory_counts"],
+                    "total_memories": stats["total_memories"]
+                }
+                folder_info.append(entry)
+            except FileNotFoundError:
+                 print(f"Warning: Folder '{folder}' not found during list_folders stats gathering.")
+                 continue # Skip folders that might have been deleted concurrently
+
+
         # Sort by special folders first, then name
         folder_info.sort(key=lambda x: (0 if x["is_special"] else 1, x["name"]))
         
@@ -393,10 +419,10 @@ class MemdirFolderManager:
         # Clean up folder path
         folder_path = folder_path.replace("\\", "/").strip("/")
         
-        # Full paths
-        folder_full_path = os.path.join(MEMDIR_BASE, folder_path)
+        # Full paths using stored base_dir
+        folder_full_path = os.path.join(self.base_dir, folder_path)
         symlink_full_path = os.path.join(symlink_root, folder_path)
-        
+
         # Check if folder exists
         if not os.path.exists(folder_full_path):
             return (False, f"Folder does not exist: {folder_path}")
@@ -440,10 +466,10 @@ class MemdirFolderManager:
         source_path = source_path.replace("\\", "/").strip("/")
         target_path = target_path.replace("\\", "/").strip("/")
         
-        # Full paths
-        source_full_path = os.path.join(MEMDIR_BASE, source_path)
-        target_full_path = os.path.join(MEMDIR_BASE, target_path)
-        
+        # Full paths using stored base_dir
+        source_full_path = os.path.join(self.base_dir, source_path)
+        target_full_path = os.path.join(self.base_dir, target_path)
+
         # Check if source folder exists
         if not os.path.exists(source_full_path):
             return (False, f"Source folder does not exist: {source_path}")
@@ -502,10 +528,10 @@ class MemdirFolderManager:
         if statuses is None:
             statuses = ["cur"]
             
-        # Get all memories
+        # Get all memories, passing base_dir
         memories = []
         for status in statuses:
-            memories.extend(list_memories(folder_path, status))
+            memories.extend(list_memories(self.base_dir, folder_path, status))
             
         # Track affected memories
         affected_count = 0
@@ -514,7 +540,7 @@ class MemdirFolderManager:
         # Process each memory
         for memory in memories:
             file_path = os.path.join(
-                MEMDIR_BASE,
+                self.base_dir, # Use stored base_dir
                 folder_path,
                 memory["status"],
                 memory["filename"]
@@ -527,7 +553,7 @@ class MemdirFolderManager:
             # Get existing tags
             existing_tags = []
             if "Tags" in memory["headers"]:
-                existing_tags = [tag.strip() for tag in memory["headers"]["Tags"].split(",")]
+                existing_tags = [tag.strip() for tag in memory["headers"]["Tags"].split(",") if tag.strip()] # Ensure no empty tags
                 
             # Apply operation
             if operation == "add":
@@ -557,20 +583,24 @@ class MemdirFolderManager:
             if "Tags:" in content:
                 # Replace existing tags line
                 content = re.sub(
-                    r"Tags:.*$",
+                    r"^Tags:.*$", # Match start of line
                     f"Tags: {new_tags_str}",
                     content,
+                    count=1, # Replace only the first occurrence
                     flags=re.MULTILINE
                 )
             else:
-                # Add tags header if not present
-                content = re.sub(
-                    r"^(.*?)(---)",
-                    f"\\1Tags: {new_tags_str}\n\\2",
-                    content,
-                    flags=re.DOTALL
-                )
-                
+                # Add tags header if not present (insert before ---)
+                 parts = content.split("---", 1)
+                 if len(parts) == 2:
+                     header_part, body_part = parts
+                     # Add Tags line, ensuring newline if header_part wasn't empty
+                     new_header = header_part.strip() + ("\n" if header_part.strip() else "") + f"Tags: {new_tags_str}"
+                     content = f"{new_header}\n---\n{body_part}"
+                 else: # Should not happen if parsing worked, but handle defensively
+                     content = f"Tags: {new_tags_str}\n---\n{content}"
+
+
             # Write back
             with open(file_path, "w") as f:
                 f.write(content)
@@ -783,3 +813,118 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+</final_file_content>
+
+IMPORTANT: For any future changes to this file, use the final_file_content shown above as your reference. This content reflects the current state of the file, including any auto-formatting (e.g., if you used single quotes but the formatter converted them to double quotes). Always base your SEARCH/REPLACE operations on this final version to ensure accuracy.
+
+<environment_details>
+# VSCode Visible Files
+memdir_tools/folders.py
+
+# VSCode Open Tabs
+config/.env.example
+.env
+fei/ui/textual_chat.py
+pytest.ini
+fei/tests/test_mcp.py
+fei/tests/test_snake_game_generation.py
+fei/tests/test_tools.py
+PROJECT_STATUS.md
+fei/evolution/__init__.py
+fei/evolution/stages/stage_0.py
+fei/ui/cli.py
+fei/core/assistant.py
+requirements.txt
+fei/tools/memory_tools.py
+fei/tests/test_memory_e2e.py
+memdir_tools/server.py
+fei/tools/memdir_connector.py
+memdir_tools/run_server.py
+memdir_tools/utils.py
+memdir_tools/folders.py
+fei/core/task_executor.py
+fei/utils/config.py
+fei/core/mcp.py
+snake_game_final.py
+fei/tests/test_mcp_consent.py
+fei/tools/code.py
+fei/tools/definitions.py
+fei/evolution/manifest.json
+fei/tools/handlers.py
+
+# Current Time
+4/4/2025, 6:18:02 AM (Europe/Prague, UTC+2:00)
+
+# Current Mode
+ACT MODE
+</environment_details>
+
+</final_file_content>
+
+IMPORTANT: For any future changes to this file, use the final_file_content shown above as your reference. This content reflects the current state of the file, including any auto-formatting (e.g., if you used single quotes but the formatter converted them to double quotes). Always base your SEARCH/REPLACE operations on this final version to ensure accuracy.
+
+
+
+New problems detected after saving the file:
+memdir_tools/folders.py
+- [Pylance Error] Line 817: Expected expression
+- [Pylance Error] Line 819: Statements must be separated by newlines or semicolons
+- [Pylance Error] Line 819: Statements must be separated by newlines or semicolons
+- [Pylance Error] Line 819: Statements must be separated by newlines or semicolons
+- [Pylance Error] Line 819: Statements must be separated by newlines or semicolons
+- [Pylance Error] Line 819: Statements must be separated by newlines or semicolons
+- [Pylance Error] Line 819: Statements must be separated by newlines or semicolons
+- [Pylance Error] Line 819: Statements must be separated by newlines or semicolons
+- [Pylance Error] Line 819: Statements must be separated by newlines or semicolons
+- [Pylance Error] Line 819: Statements must be separated by newlines or semicolons
+- [Pylance Error] Line 819: Statements must be separated by newlines or semicolons
+- [Pylance Error] Line 819: Statements must be separated by newlines or semicolons
+- [Pylance Error] Line 819: Expected expression
+- [Pylance Error] Line 821: Expected expression
+- [Pylance Error] Line 826: Expected expression
+- [Pylance Error] Line 827: Expected expression
+- [Pylance Error] Line 857: Statements must be separated by newlines or semicolons
+- [Pylance Error] Line 857: Expected expression
+- [Pylance Error] Line 860: Statements must be separated by newlines or semicolons
+- [Pylance Error] Line 861: Expected expression<environment_details>
+# VSCode Visible Files
+memdir_tools/folders.py
+
+# VSCode Open Tabs
+config/.env.example
+.env
+fei/ui/textual_chat.py
+pytest.ini
+fei/tests/test_mcp.py
+fei/tests/test_snake_game_generation.py
+fei/tests/test_tools.py
+PROJECT_STATUS.md
+fei/evolution/__init__.py
+fei/evolution/stages/stage_0.py
+fei/ui/cli.py
+fei/core/assistant.py
+requirements.txt
+fei/tools/memory_tools.py
+memdir_tools/server.py
+fei/tests/test_memory_e2e.py
+memdir_tools/run_server.py
+fei/tools/memdir_connector.py
+memdir_tools/utils.py
+memdir_tools/folders.py
+fei/core/task_executor.py
+fei/utils/config.py
+fei/core/mcp.py
+snake_game_final.py
+fei/tests/test_mcp_consent.py
+fei/tools/code.py
+fei/tools/definitions.py
+fei/evolution/manifest.json
+fei/tools/handlers.py
+
+# Current Time
+4/4/2025, 6:18:02 AM (Europe/Prague, UTC+2:00)
+
+# Current Mode
+ACT MODE
+</environment_details>

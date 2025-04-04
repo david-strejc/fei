@@ -156,16 +156,31 @@ def memory_search_handler(args: Dict[str, Any]) -> Dict[str, Any]:
         Search results
     """
     try:
-        # Initialize connector - let its __init__ handle API key resolution
+        # Initialize connector - let its __init__ handle config/env/defaults
         connector = MemdirConnector(auto_start=True)
 
-        # First check if the server is available
-        if not connector.start_server_command():
-            return {
-                "error": "Cannot connect to Memdir server. Server start failed.",
-                "count": 0,
-                "results": []
-            }
+        # First check if the server is available (using configured URL/port)
+        status_info = connector.get_server_status()
+        if status_info.get("status") != "running":
+            # Attempt to start if not running
+            start_result = connector.start_server_command()
+            if start_result.get("status") not in ["started", "already_running"]:
+                return {
+                    "error": f"Cannot connect to Memdir server at {connector.server_url}. Server start failed: {start_result.get('message')}",
+                    "count": 0,
+                    "results": []
+                }
+            # Wait a moment after starting
+            import time
+            time.sleep(1.0)
+            # Re-check status
+            if not connector.check_connection():
+                 return {
+                    "error": f"Cannot connect to Memdir server at {connector.server_url} even after attempting start.",
+                    "count": 0,
+                    "results": []
+                }
+            # If we get here, server was started and connection is confirmed, proceed.
             
         # Extract arguments
         query = args.get("query", "")
@@ -228,17 +243,26 @@ def memory_create_handler(args: Dict[str, Any]) -> Dict[str, Any]:
         Result of memory creation
     """
     try:
-        # Read API key ONLY from environment variable
-        api_key = os.environ.get("MEMDIR_API_KEY")
-        connector = MemdirConnector(api_key=api_key, auto_start=True)
+        # Initialize connector - let its __init__ handle config/env/defaults
+        connector = MemdirConnector(auto_start=True)
 
-        # First check if the server is available and start it if needed
-        start_result = connector.start_server_command()
-        if start_result["status"] not in ["started", "already_running"]:
-            return {
-                "error": "Cannot connect to Memdir server. Server start failed.",
-                "success": False
-            }
+        # Check server status and attempt start if necessary
+        status_info = connector.get_server_status()
+        if status_info.get("status") != "running":
+            start_result = connector.start_server_command()
+            if start_result.get("status") not in ["started", "already_running"]:
+                return {
+                    "error": f"Cannot connect to Memdir server at {connector.server_url}. Server start failed: {start_result.get('message')}",
+                    "success": False
+                }
+            import time
+            time.sleep(1.0)
+            if not connector.check_connection():
+                 return {
+                    "error": f"Cannot connect to Memdir server at {connector.server_url} even after attempting start.",
+                    "success": False
+                }
+            # If we get here, server was started and connection is confirmed, proceed.
             
         # Extract arguments
         subject = args.get("subject", "")
@@ -283,16 +307,24 @@ def memory_view_handler(args: Dict[str, Any]) -> Dict[str, Any]:
         Memory details
     """
     try:
-        # Read API key ONLY from environment variable
-        api_key = os.environ.get("MEMDIR_API_KEY")
-        connector = MemdirConnector(api_key=api_key, auto_start=True)
+        # Initialize connector - let its __init__ handle config/env/defaults
+        connector = MemdirConnector(auto_start=True)
 
-        # First check if the server is available and start it if needed
-        start_result = connector.start_server_command()
-        if start_result["status"] not in ["started", "already_running"]:
-            return {
-                "error": "Cannot connect to Memdir server. Server start failed."
-            }
+        # Check server status and attempt start if necessary
+        status_info = connector.get_server_status()
+        if status_info.get("status") != "running":
+            start_result = connector.start_server_command()
+            if start_result.get("status") not in ["started", "already_running"]:
+                return {
+                    "error": f"Cannot connect to Memdir server at {connector.server_url}. Server start failed: {start_result.get('message')}"
+                }
+            import time
+            time.sleep(1.0)
+            if not connector.check_connection():
+                 return {
+                    "error": f"Cannot connect to Memdir server at {connector.server_url} even after attempting start."
+                }
+            # If we get here, server was started and connection is confirmed, proceed.
         
         # Extract arguments
         memory_id = args.get("memory_id", "")
@@ -332,18 +364,28 @@ def memory_list_handler(args: Dict[str, Any]) -> Dict[str, Any]:
         List of memories
     """
     try:
-        # Read API key ONLY from environment variable
-        api_key = os.environ.get("MEMDIR_API_KEY")
-        connector = MemdirConnector(api_key=api_key, auto_start=True)
+        # Initialize connector - let its __init__ handle config/env/defaults
+        connector = MemdirConnector(auto_start=True)
 
-        # First check if the server is available and start it if needed
-        start_result = connector.start_server_command()
-        if start_result["status"] not in ["started", "already_running"]:
-            return {
-                "error": "Cannot connect to Memdir server. Server start failed.",
-                "count": 0,
-                "memories": []
-            }
+        # Check server status and attempt start if necessary
+        status_info = connector.get_server_status()
+        if status_info.get("status") != "running":
+            start_result = connector.start_server_command()
+            if start_result.get("status") not in ["started", "already_running"]:
+                return {
+                    "error": f"Cannot connect to Memdir server at {connector.server_url}. Server start failed: {start_result.get('message')}",
+                    "count": 0,
+                    "memories": []
+                }
+            import time
+            time.sleep(1.0)
+            if not connector.check_connection():
+                 return {
+                    "error": f"Cannot connect to Memdir server at {connector.server_url} even after attempting start.",
+                    "count": 0,
+                    "memories": []
+                }
+            # If we get here, server was started and connection is confirmed, proceed.
         
         # Extract arguments
         folder = args.get("folder", "")
@@ -395,17 +437,26 @@ def memory_delete_handler(args: Dict[str, Any]) -> Dict[str, Any]:
         Result of deletion
     """
     try:
-        # Read API key ONLY from environment variable
-        api_key = os.environ.get("MEMDIR_API_KEY")
-        connector = MemdirConnector(api_key=api_key, auto_start=True)
+        # Initialize connector - let its __init__ handle config/env/defaults
+        connector = MemdirConnector(auto_start=True)
 
-        # First check if the server is available and start it if needed
-        start_result = connector.start_server_command()
-        if start_result["status"] not in ["started", "already_running"]:
-            return {
-                "error": "Cannot connect to Memdir server. Server start failed.",
-                "success": False
-            }
+        # Check server status and attempt start if necessary
+        status_info = connector.get_server_status()
+        if status_info.get("status") != "running":
+            start_result = connector.start_server_command()
+            if start_result.get("status") not in ["started", "already_running"]:
+                return {
+                    "error": f"Cannot connect to Memdir server at {connector.server_url}. Server start failed: {start_result.get('message')}",
+                    "success": False
+                }
+            import time
+            time.sleep(1.0)
+            if not connector.check_connection():
+                 return {
+                    "error": f"Cannot connect to Memdir server at {connector.server_url} even after attempting start.",
+                    "success": False
+                }
+            # If we get here, server was started and connection is confirmed, proceed.
             
         # Extract arguments
         memory_id = args.get("memory_id", "")
@@ -437,18 +488,28 @@ def memory_search_by_tag_handler(args: Dict[str, Any]) -> Dict[str, Any]:
         Search results
     """
     try:
-        # Read API key ONLY from environment variable
-        api_key = os.environ.get("MEMDIR_API_KEY")
-        connector = MemdirConnector(api_key=api_key, auto_start=True)
+        # Initialize connector - let its __init__ handle config/env/defaults
+        connector = MemdirConnector(auto_start=True)
 
-        # First check if the server is available and start it if needed
-        start_result = connector.start_server_command()
-        if start_result["status"] not in ["started", "already_running"]:
-            return {
-                "error": "Cannot connect to Memdir server. Server start failed.",
-                "count": 0,
-                "results": []
-            }
+        # Check server status and attempt start if necessary
+        status_info = connector.get_server_status()
+        if status_info.get("status") != "running":
+            start_result = connector.start_server_command()
+            if start_result.get("status") not in ["started", "already_running"]:
+                return {
+                    "error": f"Cannot connect to Memdir server at {connector.server_url}. Server start failed: {start_result.get('message')}",
+                    "count": 0,
+                    "results": []
+                }
+            import time
+            time.sleep(1.0)
+            if not connector.check_connection():
+                 return {
+                    "error": f"Cannot connect to Memdir server at {connector.server_url} even after attempting start.",
+                    "count": 0,
+                    "results": []
+                }
+            # If we get here, server was started and connection is confirmed, proceed.
             
         # Transform tag search into regular search
         tag = args.get("tag", "")
@@ -490,13 +551,12 @@ def memdir_server_start_handler(args: Dict[str, Any]) -> Dict[str, Any]:
         Status dictionary
     """
     try:
-        # Read API key ONLY from environment variable for consistency
-        api_key = os.environ.get("MEMDIR_API_KEY")
-        # Pass the resolved API key to the connector instance
-        connector = MemdirConnector(api_key=api_key, auto_start=True)
+        # Initialize connector - let its __init__ handle config/env/defaults
+        # auto_start=True might be redundant if start_server_command handles it, but harmless
+        connector = MemdirConnector(auto_start=True)
         return connector.start_server_command()
     except Exception as e:
-        logger.error(f"Error starting Memdir server: {e}")
+        logger.error(f"Error in memdir_server_start_handler: {e}", exc_info=True)
         return {"status": "error", "message": f"Error starting Memdir server: {e}"}
 
 def memdir_server_stop_handler(args: Dict[str, Any]) -> Dict[str, Any]:
