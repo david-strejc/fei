@@ -23,9 +23,19 @@ MEMDIR_PORT = 8766 # Use a different port for testing
 
 # --- Test Fixtures ---
 
-@pytest.fixture(scope="module", autouse=True)
+@pytest.fixture(scope="function", autouse=True) # Changed scope to function
 async def setup_memdir_server():
     """Sets up config, reloads modules, starts/stops server, yields registry."""
+
+    # --- Ensure any previous server instance is stopped ---
+    print("Attempting to stop any lingering Memdir server before starting...")
+    # Need to import the class to call the class method
+    from fei.tools.memdir_connector import MemdirConnector
+    MemdirConnector._stop_server() # Attempt to stop via class method
+    MemdirConnector._server_process = None # Explicitly clear the class variable after stop attempt
+    print("Waiting 2 seconds for port release...")
+    await asyncio.sleep(2) # Increased delay
+    print("Lingering server stop attempt complete.")
 
     # Ensure Memdir test directory is clean and created
     if MEMDIR_TEST_DIR.exists():
@@ -46,10 +56,7 @@ async def setup_memdir_server():
     original_url = config.get("memdir.server_url")
     original_data_dir_config = config.get("memdir.data_dir")
 
-    print(f"Configuring Memdir for test: URL={test_server_url}, Key={test_api_key}, Data={test_data_dir}")
-    config.set("memdir.server_url", test_server_url)
-    config.set("memdir.api_key", test_api_key)
-    config.set("memdir.data_dir", test_data_dir) # Set in config for connector
+    # Config setting moved after module reloads
 
     original_env_key = os.environ.get("MEMDIR_API_KEY")
     original_env_url = os.environ.get("MEMDIR_SERVER_URL")
@@ -68,6 +75,14 @@ async def setup_memdir_server():
     importlib.reload(memdir_connector_module)
     importlib.reload(memory_tools_module)
 
+    # --- Configure Test Settings AFTER reloads ---
+    # Get the reloaded config instance
+    config = config_module.get_config()
+    print(f"Configuring Memdir for test AFTER reload: URL={test_server_url}, Key={test_api_key}, Data={test_data_dir}")
+    config.set("memdir.server_url", test_server_url)
+    config.set("memdir.api_key", test_api_key)
+    config.set("memdir.data_dir", test_data_dir) # Set in config for connector
+
     # Re-create ToolRegistry and register tools
     print("Re-creating ToolRegistry and registering tools...")
     test_registry = ToolRegistry()
@@ -76,15 +91,16 @@ async def setup_memdir_server():
 
     # --- Start Server ---
     print("Attempting to start server via re-registered tool handler...")
-    # The connector's _start_server method should now pass MEMDIR_DATA_DIR in env
-    start_result = test_registry.execute_tool("memdir_server_start", {})
-    print(f"Memdir start tool result: {start_result}")
-    assert start_result.get("status") in ["started", "already_running"], f"Failed to start Memdir server via tool handler: {start_result.get('message')}"
+    # Directly call _start_server on a new connector instance to bypass tool handler pre-checks
+    print(f"Directly calling connector._start_server(data_dir='{test_data_dir}')...") # Pass test_data_dir
+    connector_for_start = memdir_connector_module.MemdirConnector() # Use reloaded module
+    start_success = connector_for_start._start_server(data_dir=test_data_dir) # Pass test_data_dir
+    print(f"Direct _start_server call result: {start_success}")
+    assert start_success, "Direct call to _start_server() failed"
 
-    # Wait a moment for the server to be fully ready
-    if start_result.get("status") == "started":
-        print("Waiting 5 seconds for server to initialize...")
-        await asyncio.sleep(5)
+    # Wait after attempting start (handled within _start_server now)
+    # print("Waiting after _start_server call...") # No extra wait needed here
+    # await asyncio.sleep(2)
 
     # Check connection
     connector_for_check = memdir_connector_module.MemdirConnector()

@@ -19,7 +19,7 @@ from datetime import datetime
 from memdir_tools.utils import (
     ensure_memdir_structure,
     get_memdir_folders,
-    get_memdir_base_path_from_config, # Use this to get base path initially
+    # get_memdir_base_path_from_config, # REMOVED: Function was removed from utils.py
     list_memories, # Refactored to accept base_dir
     move_memory, # Refactored to accept base_dir
     STANDARD_FOLDERS,
@@ -48,13 +48,18 @@ class MemdirFolderManager:
     Memory folder management system
     """
     
-    def __init__(self):
+    def __init__(self, base_dir: str):
         """Initialize folder manager"""
-        # Get and store the base directory path
-        # Note: This might still get the default path if called before app config is set.
-        # We will update it in server.py's before_request handler if needed.
-        self.base_dir = get_memdir_base_path_from_config()
-        # Initial ensure_structure might use default path, but will be corrected before requests.
+        # Base directory is now passed explicitly
+        if not base_dir or not os.path.isdir(base_dir):
+             # Handle cases where base_dir might not be valid yet,
+             # although server.py should provide a valid one.
+             # Maybe raise an error or log a warning? For now, just store it.
+             # Consider if ensure_memdir_structure should be called here or later.
+             pass # Or raise ValueError("Invalid base_dir provided to MemdirFolderManager")
+
+        self.base_dir = base_dir
+        # Ensure structure based on the provided base_dir
         ensure_memdir_structure(self.base_dir)
     
     def create_folder(self, folder_path: str) -> bool:
@@ -813,118 +818,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-</final_file_content>
-
-IMPORTANT: For any future changes to this file, use the final_file_content shown above as your reference. This content reflects the current state of the file, including any auto-formatting (e.g., if you used single quotes but the formatter converted them to double quotes). Always base your SEARCH/REPLACE operations on this final version to ensure accuracy.
-
-<environment_details>
-# VSCode Visible Files
-memdir_tools/folders.py
-
-# VSCode Open Tabs
-config/.env.example
-.env
-fei/ui/textual_chat.py
-pytest.ini
-fei/tests/test_mcp.py
-fei/tests/test_snake_game_generation.py
-fei/tests/test_tools.py
-PROJECT_STATUS.md
-fei/evolution/__init__.py
-fei/evolution/stages/stage_0.py
-fei/ui/cli.py
-fei/core/assistant.py
-requirements.txt
-fei/tools/memory_tools.py
-fei/tests/test_memory_e2e.py
-memdir_tools/server.py
-fei/tools/memdir_connector.py
-memdir_tools/run_server.py
-memdir_tools/utils.py
-memdir_tools/folders.py
-fei/core/task_executor.py
-fei/utils/config.py
-fei/core/mcp.py
-snake_game_final.py
-fei/tests/test_mcp_consent.py
-fei/tools/code.py
-fei/tools/definitions.py
-fei/evolution/manifest.json
-fei/tools/handlers.py
-
-# Current Time
-4/4/2025, 6:18:02 AM (Europe/Prague, UTC+2:00)
-
-# Current Mode
-ACT MODE
-</environment_details>
-
-</final_file_content>
-
-IMPORTANT: For any future changes to this file, use the final_file_content shown above as your reference. This content reflects the current state of the file, including any auto-formatting (e.g., if you used single quotes but the formatter converted them to double quotes). Always base your SEARCH/REPLACE operations on this final version to ensure accuracy.
-
-
-
-New problems detected after saving the file:
-memdir_tools/folders.py
-- [Pylance Error] Line 817: Expected expression
-- [Pylance Error] Line 819: Statements must be separated by newlines or semicolons
-- [Pylance Error] Line 819: Statements must be separated by newlines or semicolons
-- [Pylance Error] Line 819: Statements must be separated by newlines or semicolons
-- [Pylance Error] Line 819: Statements must be separated by newlines or semicolons
-- [Pylance Error] Line 819: Statements must be separated by newlines or semicolons
-- [Pylance Error] Line 819: Statements must be separated by newlines or semicolons
-- [Pylance Error] Line 819: Statements must be separated by newlines or semicolons
-- [Pylance Error] Line 819: Statements must be separated by newlines or semicolons
-- [Pylance Error] Line 819: Statements must be separated by newlines or semicolons
-- [Pylance Error] Line 819: Statements must be separated by newlines or semicolons
-- [Pylance Error] Line 819: Statements must be separated by newlines or semicolons
-- [Pylance Error] Line 819: Expected expression
-- [Pylance Error] Line 821: Expected expression
-- [Pylance Error] Line 826: Expected expression
-- [Pylance Error] Line 827: Expected expression
-- [Pylance Error] Line 857: Statements must be separated by newlines or semicolons
-- [Pylance Error] Line 857: Expected expression
-- [Pylance Error] Line 860: Statements must be separated by newlines or semicolons
-- [Pylance Error] Line 861: Expected expression<environment_details>
-# VSCode Visible Files
-memdir_tools/folders.py
-
-# VSCode Open Tabs
-config/.env.example
-.env
-fei/ui/textual_chat.py
-pytest.ini
-fei/tests/test_mcp.py
-fei/tests/test_snake_game_generation.py
-fei/tests/test_tools.py
-PROJECT_STATUS.md
-fei/evolution/__init__.py
-fei/evolution/stages/stage_0.py
-fei/ui/cli.py
-fei/core/assistant.py
-requirements.txt
-fei/tools/memory_tools.py
-memdir_tools/server.py
-fei/tests/test_memory_e2e.py
-memdir_tools/run_server.py
-fei/tools/memdir_connector.py
-memdir_tools/utils.py
-memdir_tools/folders.py
-fei/core/task_executor.py
-fei/utils/config.py
-fei/core/mcp.py
-snake_game_final.py
-fei/tests/test_mcp_consent.py
-fei/tools/code.py
-fei/tools/definitions.py
-fei/evolution/manifest.json
-fei/tools/handlers.py
-
-# Current Time
-4/4/2025, 6:18:02 AM (Europe/Prague, UTC+2:00)
-
-# Current Mode
-ACT MODE
-</environment_details>

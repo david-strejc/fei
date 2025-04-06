@@ -243,98 +243,78 @@ def _compare_values(value1: Any, operator: str, value2: Any) -> bool:
 
 def _memory_matches_query(memory: Dict[str, Any], query: SearchQuery, debug: bool = False) -> bool:
     """Check if a memory matches a search query"""
-    # Print memory fields for first memory if debugging
     if debug:
-        print(f"DEBUG: Memory structure for {memory['metadata']['unique_id']}:")
-        print(f"  status: {memory['status']}")
-        print(f"  folder: {memory['folder']}")
-        print(f"  filename: {memory['filename']}")
-        print(f"  headers: {memory['headers']}")
-        print()
-        
-        # Important: Fix the Status field here directly for this run
-        for condition in query.conditions:
-            if condition["field"] == "Status":
-                # We need to check the Status header, not the status field
-                print(f"DEBUG: Found Status condition, getting from headers: {memory['headers'].get('Status', '(none)')}")
-                
-    # If no conditions, match everything
+        print(f"\nDEBUG: Checking memory {memory['metadata']['unique_id']} against query...")
+        print(f"  Memory Headers: {memory.get('headers', {})}")
+        print(f"  Memory Content: {memory.get('content', '')[:50]}...") # Show preview
+        print(f"  Query Conditions: {query.conditions}")
+
     if not query.conditions:
         return True
-    
-    # For plain text keyword searches, use OR logic between Subject and content
+
+    # Separate keyword conditions (pairs of Subject/content) from others
+    keyword_values = set()
     keyword_conditions = []
     other_conditions = []
-    
+
+    # Identify potential keyword values (values used in both Subject and content 'contains' conditions)
+    subject_contains = {c['value'] for c in query.conditions if c['field'] == 'Subject' and c['operator'] == 'contains'}
+    content_contains = {c['value'] for c in query.conditions if c['field'] == 'content' and c['operator'] == 'contains'}
+    keyword_values = subject_contains.intersection(content_contains)
+
     for condition in query.conditions:
-        field = condition["field"]
-        operator = condition["operator"]
-        target_value = condition["value"]
-        
-        # Track keyword conditions separately
-        if field == "Subject" and operator == "contains" and any(c for c in query.conditions if c["field"] == "content" and c["operator"] == "contains" and c["value"] == target_value):
+        is_keyword_part = (
+            condition['operator'] == 'contains' and
+            condition['value'] in keyword_values and
+            (condition['field'] == 'Subject' or condition['field'] == 'content')
+        )
+        if is_keyword_part:
             keyword_conditions.append(condition)
         else:
             other_conditions.append(condition)
-    
-    # First check keyword conditions (OR logic between Subject and content)
-    if keyword_conditions:
-        # Group keyword conditions by value
-        keyword_groups = {}
-        for condition in keyword_conditions:
-            value = condition["value"]
-            if value not in keyword_groups:
-                keyword_groups[value] = []
-            keyword_groups[value].append(condition)
-        
-        # For each keyword, check if it's in either Subject or content
-        for value, conditions in keyword_groups.items():
-            found = False
-            for condition in conditions:
-                field = condition["field"]
-                operator = condition["operator"]
-                field_value = _get_field_value(memory, field)
-                if debug:
-                    print(f"DEBUG: Keyword check - Field {field}, Value: '{field_value}', Operator: {operator}, Target: '{value}'")
-                if _compare_values(field_value, operator, value):
-                    found = True
-                    break
-            
-            if not found:
-                if debug:
-                    print(f"DEBUG: Memory {memory['metadata']['unique_id']} failed keyword condition: {value}")
-                return False
-    
-    # Then check all other conditions (AND logic)
+
+    # Evaluate keyword conditions (OR logic for each keyword value)
+    if keyword_values:
+        if debug: print("DEBUG: Evaluating keyword conditions...")
+        for keyword in keyword_values:
+            subject_match = False
+            content_match = False
+            subject_value = _get_field_value(memory, "Subject")
+            content_value = _get_field_value(memory, "content") # Assumes content is loaded if needed
+
+            subject_match = _compare_values(subject_value, "contains", keyword)
+            content_match = _compare_values(content_value, "contains", keyword)
+
+            if not (subject_match or content_match):
+                if debug: print(f"DEBUG: Keyword '{keyword}' NOT found in Subject OR content. Failing match.")
+                return False # Must match at least one keyword condition group if present
+            if debug: print(f"DEBUG: Keyword '{keyword}' found in Subject or content.")
+
+    # Evaluate other conditions (AND logic)
+    if debug and other_conditions: print("DEBUG: Evaluating other conditions...")
     for condition in other_conditions:
         field = condition["field"]
         operator = condition["operator"]
         target_value = condition["value"]
-        
+
         # Special handling for Status header vs status field
         if field == "Status" or field == "status_value" or field == "state":
-            # Get the Status header value, not the status field
             field_value = memory["headers"].get("Status", "")
         else:
-            # Get value from memory using the regular function
             field_value = _get_field_value(memory, field)
-        
-        # Debug output
+
         if debug:
-            print(f"DEBUG: Field {field}, Value: '{field_value}', Operator: {operator}, Target: '{target_value}'")
-        
-        # Compare values
+            print(f"DEBUG: Condition Check - Field: {field}, Operator: {operator}, Target: '{target_value}', Actual Value: '{field_value}'")
+
         match = _compare_values(field_value, operator, target_value)
         if not match:
-            if debug:
-                print(f"DEBUG: Memory {memory['metadata']['unique_id']} failed condition: {field} {operator} {target_value}")
+            if debug: print(f"DEBUG: Condition failed. Failing match.")
             return False
-    
-    if debug:
-        print(f"DEBUG: Memory {memory['metadata']['unique_id']} MATCHED all conditions")
+
+    if debug: print(f"DEBUG: Memory MATCHED all conditions.")
     return True
 
-def search_memories(query: SearchQuery, folders: Optional[List[str]] = None, statuses: Optional[List[str]] = None, debug: bool = False) -> List[Dict[str, Any]]:
+def search_memories(base_dir: str, query: SearchQuery, folders: Optional[List[str]] = None, statuses: Optional[List[str]] = None, debug: bool = False) -> List[Dict[str, Any]]:
     """
     Search memories with an advanced query
     
@@ -351,19 +331,29 @@ def search_memories(query: SearchQuery, folders: Optional[List[str]] = None, sta
     
     # Default to all folders if not specified
     if folders is None:
-        folders = get_memdir_folders()
+        folders = get_memdir_folders(base_dir) # Pass base_dir
     
     # Default to all standard folders if not specified
     if statuses is None:
         statuses = STANDARD_FOLDERS
     
+    # Determine if content is needed for matching
+    needs_content_for_match = any(
+        cond["field"] == "content" for cond in query.conditions
+    )
+
     # Search in each folder and status
     for folder in folders:
         for status in statuses:
-            memories = list_memories(folder, status, include_content=query.include_content)
-            
+            # Always include content if needed for matching, otherwise respect query setting
+            include_content_for_list = needs_content_for_match or query.include_content
+            memories = list_memories(base_dir, folder, status, include_content=include_content_for_list) # Pass base_dir
+
             for memory in memories:
                 if _memory_matches_query(memory, query, debug):
+                    # If content was included only for matching, remove it before adding to results
+                    if needs_content_for_match and not query.include_content and "content" in memory:
+                         del memory["content"] # Remove content if not requested in output
                     results.append(memory)
     
     # Sort results if specified

@@ -26,41 +26,15 @@ FLAGS = {
     "P": "Priority"
 }
 
-# Function to get the base directory dynamically (used by callers like server.py)
-def get_memdir_base_path_from_config() -> str:
-    """Gets the Memdir base path from config or env var."""
-    # Import flask locally to avoid potential circular dependencies at module level
-    try:
-        from flask import current_app
-    except ImportError:
-        current_app = None # Handle cases where Flask might not be available
+# REMOVED get_memdir_base_path_from_config function as it's unreliable and unused by refactored functions.
+# Callers should retrieve base_dir from app.config directly.
 
-    default_path = os.path.join(os.getcwd(), "Memdir")
-    base_path = default_path # Start with default
-
-    if current_app and 'MEMDIR_DATA_DIR' in current_app.config:
-        # Prioritize Flask app config if available and key exists
-        base_path = current_app.config['MEMDIR_DATA_DIR']
-        # print(f"DEBUG utils: Using base_path from Flask config: {base_path}")
-    else:
-        # Fallback to environment variable
-        env_path = os.environ.get("MEMDIR_DATA_DIR")
-        if env_path:
-            base_path = env_path
-            # print(f"DEBUG utils: Using base_path from ENV var: {base_path}")
-        # else:
-            # print(f"DEBUG utils: Using default base_path: {base_path}")
-
-    return base_path
-
-# Define MEMDIR_BASE using the function for module-level use if needed elsewhere,
-# but functions below should ideally call the function directly or receive base_dir.
-MEMDIR_BASE = get_memdir_base_path_from_config()
+# REMOVED: Module-level MEMDIR_BASE is unreliable. Pass base_dir explicitly.
 
 
-def ensure_memdir_structure() -> None:
+def ensure_memdir_structure(base_dir: str) -> None:
     """Ensure that the base Memdir structure exists"""
-    base_dir = get_memdir_base_path_from_config() # Get current base path
+    # base_dir = get_memdir_base_path_from_config() # REMOVED: base_dir is now an argument
     # Create base directories
     for folder in STANDARD_FOLDERS:
         os.makedirs(os.path.join(base_dir, folder), exist_ok=True)
@@ -70,9 +44,9 @@ def ensure_memdir_structure() -> None:
         for folder in STANDARD_FOLDERS:
             os.makedirs(os.path.join(base_dir, special, folder), exist_ok=True)
 
-def get_memdir_folders() -> List[str]:
+def get_memdir_folders(base_dir: str) -> List[str]:
     """Get list of all memdir folders"""
-    base_dir = get_memdir_base_path_from_config() # Get current base path
+    # base_dir = get_memdir_base_path_from_config() # REMOVED: base_dir is now an argument
     folders = []
 
     # Walk through the memdir structure
@@ -153,17 +127,7 @@ def create_memory_content(headers: Dict[str, str], body: str) -> str:
     separator = "\n---\n" if header_text else "---\n"
     return f"{header_text}{separator}{body}"
 
-def get_memory_path(folder: str, status: str = "new") -> str:
-    """
-    Get the path to a memory folder status directory (cur, new, tmp).
-    DEPRECATED: Use version accepting base_dir. Retained for potential compatibility.
-    """
-    base_dir = get_memdir_base_path_from_config() # Uses dynamic lookup
-    if status not in STANDARD_FOLDERS:
-        raise ValueError(f"Invalid status: {status}. Must be one of {STANDARD_FOLDERS}")
-    folder = folder.replace("\\", "/").strip("/")
-    full_path = os.path.join(base_dir, folder, status) if folder else os.path.join(base_dir, status)
-    return full_path
+# REMOVED deprecated get_memory_path function
 
 # Keep the refactored versions accepting base_dir alongside for now
 def get_memory_path_explicit(base_dir: str, folder: str, status: str = "new") -> str:
@@ -175,12 +139,13 @@ def get_memory_path_explicit(base_dir: str, folder: str, status: str = "new") ->
     return full_path
 
 
-def save_memory(folder: str,
-                content: str, 
-                headers: Dict[str, str] = None, 
+def save_memory(base_dir: str, # Added base_dir argument
+                folder: str,
+                content: str,
+                headers: Dict[str, str] = None,
                 flags: str = "") -> str:
     """
-    Save a memory to the specified folder. Uses dynamically determined base path.
+    Save a memory to the specified folder.
     
     Args:
         folder: The relative memory folder path (e.g., "", ".Projects/Work").
@@ -191,8 +156,8 @@ def save_memory(folder: str,
     Returns:
         The filename of the saved memory.
     """
-    base_dir = get_memdir_base_path_from_config() # Get current base path
-    ensure_memdir_structure(base_dir)
+    # base_dir = get_memdir_base_path_from_config() # REMOVED: base_dir is now an argument
+    # ensure_memdir_structure(base_dir) # REMOVED: Should be called once at startup
     folder = folder.replace("\\", "/").strip("/")
     tmp_folder_path = get_memory_path_explicit(base_dir, folder, "tmp")
     new_folder_path = get_memory_path_explicit(base_dir, folder, "new")
@@ -220,9 +185,12 @@ def save_memory(folder: str,
         
     return filename
 
-def list_memories(folder: str, status: str = "cur", include_content: bool = False) -> List[Dict[str, Any]]:
+def list_memories(base_dir: str, # Added base_dir argument
+                  folder: str,
+                  status: str = "cur",
+                  include_content: bool = False) -> List[Dict[str, Any]]:
     """
-    List memories in the specified folder and status. Uses dynamically determined base path.
+    List memories in the specified folder and status.
     
     Args:
         folder: The relative memory folder path.
@@ -232,7 +200,7 @@ def list_memories(folder: str, status: str = "cur", include_content: bool = Fals
     Returns:
         List of memory info dictionaries.
     """
-    base_dir = get_memdir_base_path_from_config() # Get current base path
+    # base_dir = get_memdir_base_path_from_config() # REMOVED: base_dir is now an argument
     memories = []
     folder_path = get_memory_path_explicit(base_dir, folder, status)
     
@@ -257,14 +225,15 @@ def list_memories(folder: str, status: str = "cur", include_content: bool = Fals
     memories.sort(key=lambda x: x["metadata"]["timestamp"], reverse=True)
     return memories
 
-def move_memory(filename: str, 
-                source_folder: str, 
-                target_folder: str, 
-                source_status: str = "new", 
+def move_memory(base_dir: str, # Added base_dir argument
+                filename: str,
+                source_folder: str,
+                target_folder: str,
+                source_status: str = "new",
                 target_status: str = "cur",
                 new_flags: Optional[str] = None) -> bool:
     """
-    Move a memory from one folder/status to another. Uses dynamically determined base path.
+    Move a memory from one folder/status to another.
     
     Args:
         filename: The current memory filename.
@@ -277,7 +246,7 @@ def move_memory(filename: str,
     Returns:
         True if successful, False otherwise.
     """
-    base_dir = get_memdir_base_path_from_config() # Get current base path
+    # base_dir = get_memdir_base_path_from_config() # REMOVED: base_dir is now an argument
     source_filename = filename
     source_path = os.path.join(get_memory_path_explicit(base_dir, source_folder, source_status), source_filename)
     
@@ -304,12 +273,13 @@ def move_memory(filename: str,
         print(f"Error moving file {source_path} to {target_path}: {e}")
         return False
 
-def search_memories(query: str, 
-                   folders: List[str] = None, 
-                   statuses: List[str] = None,
-                   headers_only: bool = False) -> List[Dict[str, Any]]:
+def search_memories(base_dir: str, # Added base_dir argument
+                    query: str,
+                    folders: List[str] = None,
+                    statuses: List[str] = None,
+                    headers_only: bool = False) -> List[Dict[str, Any]]:
     """
-    Search memories for a query string (simple substring search). Uses dynamically determined base path.
+    Search memories for a query string (simple substring search).
     
     Args:
         query: The search query string.
@@ -320,16 +290,16 @@ def search_memories(query: str,
     Returns:
         List of matching memory info dictionaries.
     """
-    base_dir = get_memdir_base_path_from_config() # Get current base path
+    # base_dir = get_memdir_base_path_from_config() # REMOVED: base_dir is now an argument
     results = []
     query_lower = query.lower()
     
-    folders_to_search = get_memdir_folders(base_dir) if folders is None else [f for f in folders if f in get_memdir_folders(base_dir)]
+    folders_to_search = get_memdir_folders(base_dir) if folders is None else [f for f in folders if f in get_memdir_folders(base_dir)] # Pass base_dir
     statuses_to_search = statuses if statuses is not None else STANDARD_FOLDERS
     
     for folder in folders_to_search:
         for status in statuses_to_search:
-            memories_in_status = list_memories(folder, status, include_content=not headers_only) # Uses dynamic path internally
+            memories_in_status = list_memories(base_dir, folder, status, include_content=not headers_only) # Pass base_dir
             
             for memory in memories_in_status:
                 found = False
@@ -344,12 +314,13 @@ def search_memories(query: str,
                     results.append(memory)
     return results
 
-def update_memory_flags(filename: str, 
-                       folder: str, 
-                       status: str, 
-                       flags: str) -> bool:
+def update_memory_flags(base_dir: str, # Added base_dir argument
+                        filename: str,
+                        folder: str,
+                        status: str,
+                        flags: str) -> bool:
     """
-    Update the flags of a memory by renaming the file. Uses dynamically determined base path.
+    Update the flags of a memory by renaming the file.
     
     Args:
         filename: The current memory filename.
@@ -362,11 +333,12 @@ def update_memory_flags(filename: str,
     """
     # Use move_memory to handle the rename, moving within the same folder/status
     # move_memory internally calls get_memdir_base_path_from_config
-    return move_memory(
+    return move_memory( # Pass base_dir
+        base_dir=base_dir,
         filename=filename,
         source_folder=folder,
         target_folder=folder,
         source_status=status,
         target_status=status,
-        new_flags=flags
+        new_flags=flags,
     )

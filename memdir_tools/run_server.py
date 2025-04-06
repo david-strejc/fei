@@ -9,7 +9,7 @@ import sys
 import argparse
 import uuid
 import logging
-# from memdir_tools.server import app # Remove top-level import
+from memdir_tools.server import app # Import app earlier
 
 def configure_logging(debug=False):
     """Configure logging for the server"""
@@ -62,8 +62,7 @@ def main():
         api_key = "" # Use empty string if none provided, server decorator will handle default
 
     # Set the API key in the Flask app config
-    # Now import the app, *after* config is set
-    from memdir_tools.server import app
+    # App is now imported earlier, config is set directly on it
     app.config['MEMDIR_API_KEY'] = api_key
 
     # Start the server

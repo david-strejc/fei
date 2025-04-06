@@ -26,7 +26,8 @@ class MemdirConnector:
     """Connector for interacting with a Memdir server"""
     
     # Class variable to track server process
-    _server_process = None
+    _server_process: Optional[subprocess.Popen] = None
+    _managed_data_dir: Optional[str] = None # Store data dir used by managed process
     _port = 5000
     
     def __init__(self, server_url: Optional[str] = None, api_key: Optional[str] = None, 
@@ -138,33 +139,24 @@ class MemdirConnector:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             return s.connect_ex(('localhost', port)) == 0
 
-    def _start_server(self) -> bool:
+    def _start_server(self, data_dir: Optional[str] = None) -> bool: # Added data_dir argument
         """
         Start the Memdir server if not already running
+
+        Args:
+            data_dir: Explicit data directory path to use (overrides config lookup).
 
         Returns:
             True if server was started successfully, False otherwise
         """
-        # Check if server is already running - either our process or something else
-        if MemdirConnector._server_process is not None:
-            if MemdirConnector._server_process.poll() is None:
-                logger.info("Memdir server process is already running.")
-                return True
-            logger.info("Previous Memdir server process has terminated. Starting a new one.")
-            MemdirConnector._server_process = None
+        # Check if the class already has a running server process
+        if MemdirConnector._server_process is not None and MemdirConnector._server_process.poll() is None:
+            logger.info("Managed server process already running. Skipping start.")
+            return False # Indicate server was already running
 
-        # Check if some other process is using our port
-        if self._is_port_in_use(self._port):
-            logger.info(f"Port {self._port} is already in use. Assuming server is running.")
-            try:
-                response = requests.get(f"{self.server_url}/health", timeout=1.0)
-                if response.status_code == 200:
-                    logger.info("Verified Memdir server is running on the port.")
-                    return True
-                logger.warning("Something is using the port but it's not a Memdir server.")
-            except Exception:
-                logger.warning("Something is using the port but it's not responding to health checks.")
-
+        # REMOVED: Old checks for existing _server_process handle and port in use.
+        # The check above handles the case where *this class* started a server.
+        # We still attempt Popen otherwise and rely on the post-start health check.
         try:
             logger.info(f"Starting Memdir server on port {self._port}...")
             cmd = [
@@ -178,9 +170,10 @@ class MemdirConnector:
                 # self.api_key
             ]
 
-            # Fetch data_dir from config to pass as command-line argument
-            config = get_config()
-            data_dir = config.get("memdir", {}).get("data_dir")
+            # Use passed data_dir argument if provided, otherwise try config (though config lookup seems unreliable here)
+            if data_dir is None:
+                config = get_config()
+                data_dir = config.get("memdir", {}).get("data_dir")
             logger.info(f"Connector fetched data_dir from config: {data_dir}") # ADDED LOGGING
             if data_dir:
                 cmd.extend(["--data-dir", data_dir])
@@ -216,8 +209,8 @@ class MemdirConnector:
                     stdout=f_log,
                     stderr=f_log,
                     env=server_env, # Pass the modified environment
-                    creationflags=subprocess.DETACHED_PROCESS,
-                    cwd=data_dir # Set current working directory for the subprocess
+                    creationflags=subprocess.DETACHED_PROCESS
+                    # cwd=data_dir # REMOVED: Run from project root, not data dir
                 )
             else:
                 MemdirConnector._server_process = subprocess.Popen(
@@ -225,8 +218,8 @@ class MemdirConnector:
                     stdout=f_log,
                     stderr=f_log,
                     env=server_env, # Pass the modified environment
-                    preexec_fn=os.setpgrp,
-                    cwd=data_dir # Set current working directory for the subprocess
+                    preexec_fn=os.setpgrp
+                    # cwd=data_dir # REMOVED: Run from project root, not data dir
                 )
 
             # Wait longer for server to start (up to 5 seconds)
@@ -235,7 +228,8 @@ class MemdirConnector:
                 try:
                     response = requests.get(f"{self.server_url}/health", timeout=0.5)
                     if response.status_code == 200:
-                        logger.info(f"Memdir server started successfully after {i/2:.1f}s")
+                        logger.info(f"Memdir server started successfully after {i/2:.1f}s using data_dir: {data_dir}")
+                        MemdirConnector._managed_data_dir = data_dir # Store on class
                         return True
                 except Exception:
                     pass # Ignore connection errors during startup check
@@ -243,14 +237,17 @@ class MemdirConnector:
 
             # If loop finishes, check process status
             if MemdirConnector._server_process.poll() is None:
-                logger.info("Memdir server process started but not responding to health checks yet.")
+                logger.info(f"Memdir server process started (using data_dir: {data_dir}) but not responding to health checks yet.") # Updated log message
+                MemdirConnector._managed_data_dir = data_dir # Store on class
                 return True # Assume it might become ready later
             else:
                 logger.error("Memdir server process exited unexpectedly during startup.")
+                MemdirConnector._managed_data_dir = None # Clear class variable
                 return False
 
         except Exception as e:
             logger.error(f"Error starting Memdir server: {e}", exc_info=True)
+            MemdirConnector._managed_data_dir = None # Clear class variable
             return False
 
     @classmethod
@@ -272,6 +269,8 @@ class MemdirConnector:
                 logger.error(f"Error stopping Memdir server: {e}")
             finally:
                 cls._server_process = None
+                # Also clear the class variable for data directory
+                MemdirConnector._managed_data_dir = None
     
     def check_connection(self, start_if_needed: bool = False) -> bool:
         """
@@ -460,7 +459,10 @@ class MemdirConnector:
         if debug:
             params["debug"] = "true"
         
-        return self._make_request("GET", "search", params=params)
+        result = self._make_request("GET", "search", params=params)
+        # The server returns a dict like {'count': N, 'query': Q, 'results': [...] }
+        # We should return just the list of results
+        return result.get("results", []) # Return empty list if 'results' key is missing
     
     def list_folders(self) -> List[str]:
         """
@@ -604,30 +606,50 @@ class MemdirConnector:
             return {"status": "not_running", "message": "Memdir server is not running"}
             
         self._stop_server()
+        return {"status": "stopped", "message": "Memdir server stopped successfully"}
+
+    def get_server_status(self) -> Dict[str, Any]:
+        """
+        Get the status of the managed Memdir server process.
+
+        Returns:
+            Dictionary with status info: running (bool), pid (int|None),
+            port (int), url (str), data_dir (str|None).
+        """
+        is_running = False
+        pid = None
+        data_dir = None # Cannot reliably determine data_dir after start easily
+
+        # Check the class variable holding the process
+        process = MemdirConnector._server_process
+        if process is not None:
+            if process.poll() is None:
+                # Process is running
+                is_running = True
+                pid = process.pid
+                # Retrieve data_dir from the class variable if running
+                data_dir = MemdirConnector._managed_data_dir
+                # Try to retrieve data_dir if stored during start (e.g., on self)
+                # data_dir = getattr(self, '_last_started_data_dir', None)
+            else:
+                # Process has terminated, clear the class variable
+                logger.info(f"Server process (PID: {process.pid}) found but has terminated. Clearing reference.")
+                MemdirConnector._server_process = None
+
+        # Construct the status dictionary in the format expected by tests
+        status = {
+            "running": is_running,
+            "pid": pid,
+            "port": self._port, # Return configured port
+            "url": self.server_url,
+            "data_dir": data_dir # Will be None for now
+        }
+        return status
+            
+        self._stop_server()
         return {"status": "stopped", "message": "Memdir server stopped"}
     
-    @classmethod
-    def get_server_status(cls) -> Dict[str, Any]:
-        """
-        Get the current server status
-        
-        Returns:
-            Status dictionary
-        """
-        is_running = cls._server_process is not None
-        
-        if is_running:
-            # Check if process is actually still running
-            if cls._server_process.poll() is not None:
-                # Process has terminated
-                cls._server_process = None
-                is_running = False
-                
-        return {
-            "status": "running" if is_running else "stopped",
-            "message": "Memdir server is running" if is_running else "Memdir server is not running",
-            "port": cls._port if is_running else None
-        }
+    # REMOVED duplicate @classmethod get_server_status
 
 # Example usage
 if __name__ == "__main__":

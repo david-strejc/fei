@@ -6,9 +6,12 @@ Provides remote access to Memdir functionality with API key authentication.
 
 import os
 import json
+import argparse # Added import
 from typing import Dict, List, Any, Optional, Union
+import os # Ensure os is imported if not already
 from datetime import datetime
 from functools import wraps
+from typing import Optional # Added import
 
 from flask import Flask, request, jsonify, Response
 import hmac # Import hmac for compare_digest
@@ -17,7 +20,7 @@ import hmac # Import hmac for compare_digest
 from memdir_tools.utils import (
     ensure_memdir_structure,
     get_memdir_folders,
-    get_memdir_base_path_from_config, # Import the config reader
+    # get_memdir_base_path_from_config, # REMOVED: Function was removed from utils.py
     save_memory,
     list_memories,
     move_memory,
@@ -43,21 +46,29 @@ app.config['MEMDIR_API_KEY'] = DEFAULT_API_KEY
 # Initialize config with default or env var, run_server.py will update if --data-dir is used
 app.config['MEMDIR_DATA_DIR'] = os.environ.get("MEMDIR_DATA_DIR", os.path.join(os.getcwd(), "Memdir"))
 
-# Instantiate the folder manager first, as it might rely on the base path too
-# The manager will now correctly get the base_dir from config/env via get_memdir_base_path_from_config
-folder_manager = MemdirFolderManager()
+# Declare folder manager, instantiate later when base_dir is confirmed
+folder_manager: Optional[MemdirFolderManager] = None # Added Optional import needed
 
 # Ensure the memdir structure exists before the first request
 # Use @app.before_request as @app.before_first_request is deprecated
 _structure_ensured = False
 @app.before_request
 def ensure_structure_once():
-    global _structure_ensured
+    global _structure_ensured, folder_manager
     if not _structure_ensured:
         # Use the config value set by run_server.py or the default/env var
         base_dir = app.config.get('MEMDIR_DATA_DIR')
-        print(f"Running ensure_memdir_structure() for base_dir: {base_dir}")
-        ensure_memdir_structure(base_dir)
+        if not base_dir:
+             # This shouldn't happen if run_server.py sets it, but handle defensively
+             print("ERROR: MEMDIR_DATA_DIR not configured!")
+             # Optionally raise an error or exit
+             return # Or raise ConfigurationError("MEMDIR_DATA_DIR not set")
+
+        print(f"Initializing FolderManager and ensuring structure for base_dir: {base_dir}")
+        # Instantiate the folder manager here with the correct base_dir
+        folder_manager = MemdirFolderManager(base_dir=base_dir)
+        # ensure_memdir_structure is now called within MemdirFolderManager.__init__
+        _structure_ensured = True # Mark structure as ensured
         # Also ensure the folder manager knows the correct path
         folder_manager.base_dir = base_dir # Update manager's base_dir
         print(f"Folder manager base dir set to: {folder_manager.base_dir}")
@@ -109,7 +120,7 @@ def list_all_memories():
         return jsonify({"error": f"Invalid status: {status}. Must be one of {STANDARD_FOLDERS}"}), 400
     
     # Pass base_dir to list_memories
-    memories = list_memories(base_dir, folder, status, include_content=with_content)
+    memories = list_memories(base_dir, folder, status, include_content=with_content) # Pass base_dir (already correct)
     
     return jsonify({
         "count": len(memories),
@@ -123,6 +134,8 @@ def list_all_memories():
 def create_memory():
     """Create a new memory"""
     base_dir = app.config.get('MEMDIR_DATA_DIR') # Get base dir for this request
+    app.logger.info(f"API /memories POST: Using base_dir from app.config: {base_dir}") # ADD LOGGING
+    app.logger.info(f"API /memories POST: Using base_dir from app.config: {base_dir}") # ADD LOGGING
     data = request.json
     
     if not data:
@@ -140,7 +153,7 @@ def create_memory():
     
     # Create the memory, passing base_dir
     try:
-        filename = save_memory(base_dir, folder, content, headers, flags)
+        filename = save_memory(base_dir, folder, content, headers, flags) # Pass base_dir (already correct)
         return jsonify({
             "success": True,
             "message": f"Memory created successfully",
@@ -148,8 +161,8 @@ def create_memory():
             "folder": folder or "root"
         })
     except Exception as e:
-        # Log the full exception for debugging
-        app.logger.error(f"Error in create_memory: {e}", exc_info=True)
+        # Log the full exception for debugging, including the base_dir used
+        app.logger.error(f"Error in create_memory using base_dir '{base_dir}': {e}", exc_info=True)
         return jsonify({"error": f"Failed to create memory: {str(e)}"}), 500
 
 @app.route('/memories/<memory_id>', methods=['GET'])
@@ -163,7 +176,7 @@ def get_memory(memory_id):
     all_memories = []
     for s in STANDARD_FOLDERS:
         # Pass base_dir to list_memories
-        all_memories.extend(list_memories(base_dir, folder, s, include_content=True))
+        all_memories.extend(list_memories(base_dir, folder, s, include_content=True)) # Pass base_dir (already correct)
     
     for memory in all_memories:
         if memory_id in (memory["filename"], memory["metadata"]["unique_id"]):
@@ -192,7 +205,7 @@ def update_memory(memory_id):
     all_memories = []
     for s in STANDARD_FOLDERS if not source_status else [source_status]:
         # Pass base_dir to list_memories
-        all_memories.extend(list_memories(base_dir, source_folder, s))
+        all_memories.extend(list_memories(base_dir, source_folder, s)) # Pass base_dir (already correct)
     
     found_memory = None
     for memory in all_memories:
@@ -208,7 +221,7 @@ def update_memory(memory_id):
 
     if target_folder is not None and target_folder != source_folder:
         # Move the memory to another folder, passing base_dir
-        result = move_memory(
+        result = move_memory( # Pass base_dir (already correct)
             base_dir,
             found_memory["filename"], # Use the actual filename found
             source_folder,
@@ -230,7 +243,7 @@ def update_memory(memory_id):
             return jsonify({"error": f"Failed to move memory: {memory_id}"}), 500
     elif flags is not None:
         # Update flags only, passing base_dir
-        result = update_memory_flags(
+        result = update_memory_flags( # Pass base_dir (already correct)
             base_dir,
             found_memory["filename"], # Use the actual filename found
             source_folder,
@@ -263,7 +276,7 @@ def delete_memory(memory_id):
     all_memories = []
     for s in STANDARD_FOLDERS:
         # Pass base_dir to list_memories
-        all_memories.extend(list_memories(base_dir, folder, s))
+        all_memories.extend(list_memories(base_dir, folder, s)) # Pass base_dir (already correct)
     
     found_memory = None
     for memory in all_memories:
@@ -275,7 +288,7 @@ def delete_memory(memory_id):
         return jsonify({"error": f"Memory not found: {memory_id}"}), 404
 
     # Move to trash folder, passing base_dir
-    result = move_memory(
+    result = move_memory( # Pass base_dir (already correct)
         base_dir,
         found_memory["filename"], # Use actual filename
         folder,
@@ -331,7 +344,7 @@ def search():
     
     try:
         # Pass base_dir to search_memories_advanced
-        results = search_memories_advanced(base_dir, search_query, folders, statuses, debug=debug)
+        results = search_memories_advanced(base_dir, search_query, folders, statuses, debug=debug) # Pass base_dir (already correct)
         
         return jsonify({
             "count": len(results),
@@ -451,7 +464,7 @@ def run_filters_endpoint():
         # If run_filters doesn't need base_dir directly, this isn't required.
         # Check run_filters implementation if issues arise.
         # Assuming run_filters needs base_dir based on other functions
-        results = run_filters(base_dir=base_dir, dry_run=dry_run) 
+        results = run_filters(base_dir=base_dir, dry_run=dry_run) # Pass base_dir (already correct)
         return jsonify({
             "success": True,
             "message": "Filters executed successfully",
@@ -464,17 +477,38 @@ def run_filters_endpoint():
         app.logger.error(f"Error running filters: {e}", exc_info=True)
         return jsonify({"error": f"Failed to run filters: {str(e)}"}), 500
 
-
 if __name__ == '__main__':
-    # This block is for running the server directly, not typically used by tests
-    # It should ideally read config/env vars itself if needed
-    api_key_main = os.environ.get("MEMDIR_API_KEY", DEFAULT_API_KEY)
-    if api_key_main == DEFAULT_API_KEY:
-        print("WARNING: Using default API key. Set MEMDIR_API_KEY environment variable for security.")
-    app.config['MEMDIR_API_KEY'] = api_key_main
-    
-    # Get port from environment variable or use default 5000
-    port = int(os.environ.get("MEMDIR_PORT", 5000))
-    
-    # Run the server
-    app.run(host='0.0.0.0', port=port)
+    # --- Argument Parsing ---
+    parser = argparse.ArgumentParser(description="Memdir HTTP API Server")
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("MEMDIR_PORT", 5000)), # Default to env var or 5000
+        help="Port to run the server on"
+    )
+    parser.add_argument(
+        "--data-dir",
+        type=str,
+        default=os.environ.get("MEMDIR_DATA_DIR", os.path.join(os.getcwd(), "Memdir")), # Default to env var or ./Memdir
+        help="Path to the Memdir data directory"
+    )
+    parser.add_argument(
+        "--api-key",
+        type=str,
+        default=os.environ.get("MEMDIR_API_KEY", DEFAULT_API_KEY), # Default to env var or the hardcoded default
+        help="API key required for authentication"
+    )
+    args = parser.parse_args()
+
+    # --- Update Flask Config ---
+    # Use parsed arguments to override defaults/env vars set earlier
+    app.config['MEMDIR_DATA_DIR'] = args.data_dir
+    app.config['MEMDIR_API_KEY'] = args.api_key
+
+    if app.config['MEMDIR_API_KEY'] == DEFAULT_API_KEY:
+        print("WARNING: Using default API key. Set MEMDIR_API_KEY environment variable or use --api-key for security.")
+
+    # --- Run Server ---
+    print(f"Starting Memdir server on port {args.port} with data directory: {args.data_dir}")
+    # Ensure host is '0.0.0.0' or '127.0.0.1' as needed. '127.0.0.1' is safer for local testing.
+    app.run(host='127.0.0.1', port=args.port)
