@@ -57,6 +57,11 @@ MEMORY_TOOL_SCHEMAS = {
             "with_content": {
                 "type": "boolean", 
                 "description": "Whether to include memory content in results"
+            },
+            "debug": {
+                "type": "boolean",
+                "description": "Enable debug logging for the search operation",
+                "default": False
             }
         },
         "required": ["query"]
@@ -188,22 +193,52 @@ def memory_search_handler(args: Dict[str, Any]) -> Dict[str, Any]:
         status = args.get("status")
         limit = args.get("limit")
         with_content = args.get("with_content", False)
-        
-        # Perform search
-        results = connector.search(
+        debug = args.get("debug", False) # Extract debug flag
+
+        # Perform search - connector.search returns a list of memories
+        # Rely on the query string parser in memdir_tools/search.py to handle folder/status filters within the query itself.
+        memory_list = connector.search(
             query=query,
-            folder=folder,
-            status=status,
+            # folder=folder, # Removed: Let query string handle folder filtering
+            # status=status, # Removed: Let query string handle status filtering
             limit=limit,
-            with_content=with_content
+            with_content=with_content,
+            debug=debug # Pass debug flag to connector
         )
         
+        # Check if the result is a dictionary containing an error
+        if isinstance(memory_list, dict) and "error" in memory_list:
+             logger.error(f"Memdir search returned an error: {memory_list['error']}")
+             return {
+                 "error": f"Memdir search failed: {memory_list['error']}",
+                 "count": 0,
+                 "results": []
+             }
+        
+        # Ensure memory_list is actually a list before proceeding
+        if not isinstance(memory_list, list):
+            logger.error(f"Unexpected result type from connector.search: {type(memory_list)}. Expected list.")
+            return {
+                "error": f"Unexpected result type from memory search: {type(memory_list)}",
+                "count": 0,
+                "results": []
+            }
+
         # Format results for display
         formatted_results = []
-        for memory in results.get("results", []):
+        for memory in memory_list:
+            # Ensure memory is a dictionary before using .get()
+            if not isinstance(memory, dict):
+                logger.warning(f"Skipping non-dictionary item in memory list: {memory}")
+                continue
+                
             headers = memory.get("headers", {})
             metadata = memory.get("metadata", {})
             
+            # Ensure headers and metadata are dictionaries
+            if not isinstance(headers, dict): headers = {}
+            if not isinstance(metadata, dict): metadata = {}
+
             memory_info = {
                 "id": metadata.get("unique_id", ""),
                 "subject": headers.get("Subject", "No subject"),
@@ -211,7 +246,7 @@ def memory_search_handler(args: Dict[str, Any]) -> Dict[str, Any]:
                 "tags": headers.get("Tags", ""),
                 "priority": headers.get("Priority", ""),
                 "status": headers.get("Status", ""),
-                "flags": "".join(metadata.get("flags", []))
+                "flags": "".join(metadata.get("flags", [])) if isinstance(metadata.get("flags"), list) else ""
             }
             
             if with_content:
@@ -220,7 +255,7 @@ def memory_search_handler(args: Dict[str, Any]) -> Dict[str, Any]:
             formatted_results.append(memory_info)
         
         return {
-            "count": results.get("count", 0),
+            "count": len(formatted_results), # Calculate count based on formatted results
             "results": formatted_results
         }
         
@@ -286,7 +321,7 @@ def memory_create_handler(args: Dict[str, Any]) -> Dict[str, Any]:
         return {
             "success": True,
             "message": "Memory created successfully",
-            "memory_id": result.get("id", "")
+            "memory_id": result.get("filename", "") # Use 'filename' key from server response
         }
         
     except Exception as e:
@@ -389,19 +424,39 @@ def memory_list_handler(args: Dict[str, Any]) -> Dict[str, Any]:
         
         # Extract arguments
         folder = args.get("folder", "")
-        status = args.get("status", "cur")
+        req_status = args.get("status") # Get requested status, might be None
         limit = args.get("limit")
-        
-        # Get memories
-        memories = connector.list_memories(folder, status)
-        
-        # Apply limit if specified
+
+        # Determine statuses to search
+        if req_status:
+            statuses_to_list = [req_status]
+            if req_status not in ["cur", "new", "tmp"]:
+                 return {"error": f"Invalid status requested: {req_status}", "count": 0, "memories": []}
+        else:
+            # Default to listing from all standard statuses if none specified
+            statuses_to_list = ["cur", "new", "tmp"]
+
+        all_memories = []
+        for status in statuses_to_list:
+            try:
+                # Get memories for the current status
+                memories_in_status = connector.list_memories(folder, status)
+                all_memories.extend(memories_in_status)
+            except Exception as status_e:
+                logger.warning(f"Could not list memories for status '{status}' in folder '{folder}': {status_e}")
+                # Optionally return partial results or an error
+                # return {"error": f"Failed listing status {status}: {status_e}", "count": 0, "memories": []}
+
+        # Sort all collected memories by date (newest first)
+        all_memories.sort(key=lambda x: x.get("metadata", {}).get("timestamp", 0), reverse=True)
+
+        # Apply limit if specified AFTER combining and sorting
         if limit is not None:
-            memories = memories[:int(limit)]
-        
+            all_memories = all_memories[:int(limit)]
+
         # Format for display
         formatted_memories = []
-        for memory in memories:
+        for memory in all_memories:
             headers = memory.get("headers", {})
             metadata = memory.get("metadata", {})
             
@@ -516,9 +571,9 @@ def memory_search_by_tag_handler(args: Dict[str, Any]) -> Dict[str, Any]:
         if tag.startswith("#"):
             tag = tag[1:]
             
-        # Create search query
+        # Create search query using the format parse_search_args understands
         search_args = {
-            "query": f"#tag:{tag}",
+            "query": f"tags:{tag}", # Use 'tags:' prefix instead of '#tag:'
             "with_content": args.get("with_content", False)
         }
         
@@ -627,7 +682,7 @@ def create_memory_tools(registry: ToolRegistry) -> None:
     # Register memory search tool
     registry.register_tool(
         name="memory_search",
-        description="Search for memories using advanced query syntax",
+        description="Search for memories using advanced query syntax. Requires a 'query' parameter containing the search string (e.g., 'subject:MyMemory tags:important', 'content:/regex/'). Do NOT use a 'subject' parameter; use 'query' instead.",
         input_schema=MEMORY_TOOL_SCHEMAS["memory_search"],
         handler_func=memory_search_handler,
         tags=["memory"]

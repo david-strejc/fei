@@ -272,28 +272,56 @@ def delete_memory(memory_id):
     base_dir = app.config.get('MEMDIR_DATA_DIR') # Get base dir for this request
     folder = request.args.get('folder', '')
     
-    # First find the memory
-    all_memories = []
-    for s in STANDARD_FOLDERS:
-        # Pass base_dir to list_memories
-        all_memories.extend(list_memories(base_dir, folder, s)) # Pass base_dir (already correct)
-    
+    # --- Find the memory ---
+    # First, try the specified folder (or root if empty) across all statuses
     found_memory = None
-    for memory in all_memories:
-        if memory_id in (memory["filename"], memory["metadata"]["unique_id"]):
-            found_memory = memory
-            break
+    folder_to_search = folder # Use the requested folder first
+    app.logger.debug(f"DELETE /memories/{memory_id}: Searching in folder '{folder_to_search or 'root'}' first...")
+    for s in STANDARD_FOLDERS:
+        memories_in_status = list_memories(base_dir, folder_to_search, s)
+        for memory in memories_in_status:
+            # Check both filename and unique_id part for robustness
+            if memory_id == memory["filename"] or memory_id == memory["metadata"]["unique_id"]:
+                found_memory = memory
+                app.logger.debug(f"Found memory {memory_id} in specified folder '{folder_to_search or 'root'}/{s}'")
+                break
+        if found_memory: break
 
+    # If not found in the specified folder, search ALL folders
     if not found_memory:
+        app.logger.debug(f"Memory {memory_id} not found in specified folder '{folder_to_search or 'root'}'. Searching all folders...")
+        all_folders = get_memdir_folders(base_dir) # Get all folders
+        for f in all_folders:
+            # Skip the folder we already checked if it was specified and not the root
+            if folder and f == folder:
+                continue
+            for s in STANDARD_FOLDERS:
+                memories_in_status = list_memories(base_dir, f, s)
+                for memory in memories_in_status:
+                     # Check both filename and unique_id part for robustness
+                    if memory_id == memory["filename"] or memory_id == memory["metadata"]["unique_id"]:
+                        found_memory = memory
+                        app.logger.debug(f"Found memory {memory_id} in fallback search: folder '{f or 'root'}/{s}'")
+                        break
+                if found_memory: break
+            if found_memory: break
+
+    # If still not found after searching everywhere
+    if not found_memory:
+        app.logger.warning(f"Memory {memory_id} not found anywhere.")
         return jsonify({"error": f"Memory not found: {memory_id}"}), 404
 
-    # Move to trash folder, passing base_dir
-    result = move_memory( # Pass base_dir (already correct)
+    # --- Move to trash folder ---
+    # Use the folder and status where the memory was actually found
+    actual_folder = found_memory["folder"]
+    actual_status = found_memory["status"]
+    app.logger.debug(f"Moving memory {found_memory['filename']} from '{actual_folder or 'root'}/{actual_status}' to .Trash/cur")
+    result = move_memory(
         base_dir,
         found_memory["filename"], # Use actual filename
-        folder,
+        actual_folder,            # <--- CORRECTED: Use the folder where the memory was found
         ".Trash",
-        found_memory["status"], # Use actual status
+        actual_status,            # Use the status where the memory was found
         "cur"
     )
     

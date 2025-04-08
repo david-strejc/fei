@@ -161,7 +161,7 @@ BRAVE_SEARCH_TOOL = {
         "type": "object",
         "properties": {
             "query": {
-                "type": "string", 
+                "type": "string",
                 "description": "Search query"
             },
             "count": {
@@ -376,9 +376,11 @@ REPO_DEPS_TOOL = {
 SHELL_TOOL = {
     "name": "Shell",
     "description": """Execute shell commands. Use with caution as this can modify your system.
-    
+
 Interactive commands (like games or GUI applications) will automatically run in background mode with a timeout.
-Use the background parameter to force running in background or foreground mode.""",
+Use the background parameter to force running in background or foreground mode.
+
+Note: Command security checks can be bypassed with the --do-as-i-say command line option when launching fei.""",
     "input_schema": {
         "type": "object",
         "properties": {

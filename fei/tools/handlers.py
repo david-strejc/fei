@@ -610,6 +610,7 @@ def shell_handler(args: Dict[str, Any]) -> Dict[str, Any]:
     timeout = args.get("timeout", 60)
     current_dir = args.get("current_dir")
     background = args.get("background")  # This will be None if not specified
+    # Note: do_as_i_say can only be set via command line, not by the AI
 
     if not command:
         return {"error": "Command is required"}
@@ -635,6 +636,7 @@ def shell_handler(args: Dict[str, Any]) -> Dict[str, Any]:
 
         try:
             # Run the command with background parameter
+            # Note: do_as_i_say is controlled by command line, not by the AI
             result = shell_runner.run_command(command, timeout, background)
 
             # Format the result

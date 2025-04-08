@@ -213,9 +213,24 @@ def list_memories(base_dir: str, # Added base_dir argument
             file_info = parse_memory_filename(filename)
             with open(file_path, "r", encoding='utf-8') as f: content = f.read()
             headers, body = parse_memory_content(content)
+            # Determine the actual relative folder path from base_dir
+            # folder_path is the full absolute path to the status dir (e.g., /tmp/test/X/cur)
+            # base_dir is the root (e.g., /tmp/test)
+            # We want the part between base_dir and status (e.g., X or "" for root)
+            status_dir_abs = os.path.dirname(file_path) # e.g., /tmp/test/X/cur
+            actual_status = os.path.basename(status_dir_abs) # e.g., cur
+            folder_abs = os.path.dirname(status_dir_abs) # e.g., /tmp/test/X
+            # Calculate relative path, handle root case carefully
+            actual_folder_rel = os.path.relpath(folder_abs, base_dir)
+            if actual_folder_rel == ".":
+                actual_folder_rel = "" # Represent root as empty string
+
             memory_info = {
-                "filename": filename, "folder": folder, "status": status,
-                "headers": headers, "metadata": file_info
+                "filename": filename,
+                "folder": actual_folder_rel.replace(os.path.sep, "/"), # Use actual relative folder
+                "status": actual_status, # Use actual status
+                "headers": headers,
+                "metadata": file_info
             }
             if include_content: memory_info["content"] = body
             memories.append(memory_info)

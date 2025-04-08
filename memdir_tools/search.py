@@ -159,8 +159,11 @@ def _compare_values(value1: Any, operator: str, value2: Any) -> bool:
     
     # Tag-specific operator
     elif operator == "has_tag":
-        tags = str(value1).lower().split(",")
-        return str(value2).lower() in [tag.strip() for tag in tags]
+        # Handle both space and comma separators, remove '#' prefix if present
+        tag_string = str(value1).lower().replace(" ", ",") # Replace spaces with commas
+        tags = [tag.strip().lstrip('#') for tag in tag_string.split(",") if tag.strip()]
+        target_tag = str(value2).lower().lstrip('#')
+        return target_tag in tags
     
     # Equality operators
     elif operator == "=":
@@ -349,6 +352,11 @@ def search_memories(base_dir: str, query: SearchQuery, folders: Optional[List[st
             include_content_for_list = needs_content_for_match or query.include_content
             memories = list_memories(base_dir, folder, status, include_content=include_content_for_list) # Pass base_dir
 
+            # --- ADD DEBUG PRINT ---
+            if debug and folder == ".Knowledge" and status == "new":
+                print(f"DEBUG search.py: list_memories found in {folder}/{status}: {[m['filename'] for m in memories]}")
+            # --- END DEBUG PRINT ---
+
             for memory in memories:
                 if _memory_matches_query(memory, query, debug):
                     # If content was included only for matching, remove it before adding to results
@@ -438,7 +446,13 @@ def parse_search_args(args_str: str) -> SearchQuery:
         field_match = re.match(r"([a-zA-Z_]+)(:|=|!=|>|<|>=|<=)(.+)", token)
         if field_match:
             field, operator, value = field_match.groups()
-            
+
+            # Strip surrounding quotes from the value if present
+            if len(value) >= 2 and value.startswith('"') and value.endswith('"'):
+                value = value[1:-1]
+            elif len(value) >= 2 and value.startswith("'") and value.endswith("'"):
+                value = value[1:-1]
+
             # Special handling for status vs Status fields
             if field.lower() == "status_value" or field.lower() == "state":
                 # This refers to the Status header field

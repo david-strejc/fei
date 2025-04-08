@@ -1,0 +1,12 @@
+Data Processing Results
+======================
+
+Column: Age
+  Sum: 105.0
+  Average: 26.25
+  Median: 26.50
+
+Column: Score
+  Sum: 358.0
+  Average: 89.50
+  Median: 89.00
