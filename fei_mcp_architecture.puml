@@ -1,0 +1,86 @@
+@startuml Fei MCP Architecture
+
+package "Fei Core" {
+  [Assistant] as assistant
+  [MCPManager] as mcpManager
+  [ConsentUiProvider] as consentUiProvider
+}
+
+package "MCP Client" {
+  [MCPClient] as mcpClient
+  [ProcessManager] as processManager
+  [ConsentHandler] as consentHandler
+}
+
+package "MCP Services" {
+  [MCPBaseService] as mcpBaseService
+  [MCPMemoryService] as mcpMemoryService
+  [MCPFetchService] as mcpFetchService
+  [MCPBraveSearchService] as mcpBraveSearchService
+  [MCPGitHubService] as mcpGitHubService
+}
+
+package "External MCP Servers" {
+  [HTTP MCP Servers] as httpMcpServers
+  [STDIO MCP Servers] as stdioMcpServers
+  
+  package "Brave Search Server" {
+    [Brave Search API] as braveSearchApi
+  }
+  
+  package "Memory Server" {
+    [Memory API] as memoryApi
+  }
+  
+  package "Fetch Server" {
+    [Web Fetch API] as webFetchApi
+  }
+  
+  package "GitHub Server" {
+    [GitHub API] as githubApi
+  }
+}
+
+package "UI Consent Interfaces" {
+  [CLI Consent UI] as cliConsentUi
+  [Textual Consent UI] as textualConsentUi
+}
+
+' Define relationships
+assistant --> mcpManager : uses
+mcpManager --> mcpClient : uses
+mcpClient --> processManager : uses
+mcpClient --> consentHandler : calls
+
+mcpManager --> mcpMemoryService : contains
+mcpManager --> mcpFetchService : contains
+mcpManager --> mcpBraveSearchService : contains
+mcpManager --> mcpGitHubService : contains
+
+mcpBaseService <|-- mcpMemoryService
+mcpBaseService <|-- mcpFetchService
+mcpBaseService <|-- mcpBraveSearchService
+mcpBaseService <|-- mcpGitHubService
+
+mcpClient --> httpMcpServers : connects to
+mcpClient --> stdioMcpServers : starts/manages
+
+stdioMcpServers --> braveSearchApi : includes
+stdioMcpServers --> memoryApi : includes
+stdioMcpServers --> webFetchApi : includes
+stdioMcpServers --> githubApi : includes
+
+consentUiProvider <|-- cliConsentUi
+consentUiProvider <|-- textualConsentUi
+
+assistant --> consentUiProvider : uses
+mcpClient --> consentHandler : uses
+consentHandler --> consentUiProvider : calls
+
+note right of consentHandler
+  Asks user for permission
+  before executing potentially
+  sensitive MCP operations
+endnote
+
+@enduml

@@ -7,6 +7,8 @@ This module provides definitions for Claude Universal Assistant tools.
 
 from typing import Dict, List, Any
 
+from fei.tools.process_definitions import PROCESS_TOOL_DEFINITIONS
+
 # GlobTool definition
 GLOB_TOOL = {
     "name": "GlobTool",
@@ -421,7 +423,8 @@ TOOL_DEFINITIONS = [
     REPO_MAP_TOOL,
     REPO_SUMMARY_TOOL,
     REPO_DEPS_TOOL,
-    SHELL_TOOL
+    SHELL_TOOL,
+    *PROCESS_TOOL_DEFINITIONS
 ]
 
 # Anthropic-specific tool definitions - Anthropic requires using 'custom' type for tool definitions
@@ -440,5 +443,6 @@ ANTHROPIC_TOOL_DEFINITIONS = [
     REPO_SUMMARY_TOOL,
     REPO_DEPS_TOOL,
     SHELL_TOOL,
-    BRAVE_SEARCH_TOOL
+    BRAVE_SEARCH_TOOL,
+    *PROCESS_TOOL_DEFINITIONS
 ]

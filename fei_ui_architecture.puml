@@ -1,0 +1,96 @@
+@startuml Fei UI Architecture
+
+package "Entry Points" {
+  [__main__.py] as mainEntry
+  [CLI Entry] as cliEntry
+  [Textual Entry] as textualEntry
+}
+
+package "UI Implementations" {
+  [CLI] as cli
+  [TextualChat] as textualChat
+}
+
+package "UI Components" {
+  [CLI Chat Loop] as cliChatLoop
+  [CLI Consent Provider] as cliConsentProvider
+  [CLI History Management] as cliHistoryManagement
+  
+  [Textual App] as textualApp
+  [Textual Chat Screen] as textualChatScreen
+  [Textual Consent Dialog] as textualConsentDialog
+  [Textual History Widget] as textualHistoryWidget
+}
+
+package "Fei Core" {
+  [Assistant] as assistant
+  [ToolRegistry] as toolRegistry
+  [Evolution Stage Loader] as evolutionStageLoader
+}
+
+package "Command Handlers" {
+  [Chat Command] as chatCommand
+  [Ask Command] as askCommand
+  [History Command] as historyCommand
+  [MCP Command] as mcpCommand
+  [Search Command] as searchCommand
+  [Task Command] as taskCommand
+}
+
+' Define relationships
+mainEntry --> cliEntry : uses if no --textual
+mainEntry --> textualEntry : uses if --textual
+
+cliEntry --> cli : instantiates
+textualEntry --> textualChat : instantiates
+
+cli --> cliChatLoop : contains
+cli --> cliConsentProvider : contains
+cli --> cliHistoryManagement : contains
+
+textualChat --> textualApp : contains
+textualChat --> textualChatScreen : contains
+textualChat --> textualConsentDialog : contains
+textualChat --> textualHistoryWidget : contains
+
+cli --> assistant : creates and uses
+textualChat --> assistant : creates and uses
+
+cli --> toolRegistry : creates and uses
+textualChat --> toolRegistry : creates and uses
+
+cli --> evolutionStageLoader : calls
+textualChat --> evolutionStageLoader : calls
+
+cli --> chatCommand : handles
+cli --> askCommand : handles
+cli --> historyCommand : handles
+cli --> mcpCommand : handles
+cli --> searchCommand : handles
+cli --> taskCommand : handles
+
+note right of mainEntry
+  Main entry point that
+  dispatches to CLI or
+  Textual interface
+endnote
+
+note right of cliConsentProvider
+  Asks user for permission
+  for MCP operations via
+  command line
+endnote
+
+note right of textualConsentDialog
+  Asks user for permission
+  for MCP operations via
+  graphical dialog
+endnote
+
+note right of taskCommand
+  Handles continuous task
+  execution without requiring
+  user interaction
+endnote
+
+@enduml

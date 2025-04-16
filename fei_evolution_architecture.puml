@@ -1,0 +1,69 @@
+@startuml Fei Evolution Architecture
+
+package "Fei Core" {
+  [Assistant] as assistant
+  [ToolRegistry] as toolRegistry
+}
+
+package "Evolution System" {
+  [Stage Loader] as stageLoader
+  [Manifest] as manifest
+  
+  package "Stages" {
+    [Stage 0] as stage0
+    [Stage 1] as stage1 #lightgray
+    [Stage 2] as stage2 #lightgray
+    [Stage 3] as stage3 #lightgray
+  }
+}
+
+package "Memory Integration" {
+  [Memdir] as memdir #lightgray
+  [Memorychain] as memorychain #lightgray
+}
+
+' Define relationships
+stageLoader --> manifest : reads
+stageLoader --> stage0 : loads current stage
+stageLoader --> stage1 : future stage
+stageLoader --> stage2 : future stage
+stageLoader --> stage3 : future stage
+
+stageLoader --> assistant : modifies
+stageLoader --> toolRegistry : modifies
+
+manifest ..> memdir : future: read current stage from
+manifest ..> memorychain : future: read current stage from
+
+note right of stage0
+  Stage 0: Initial Bootstrap
+  - Baseline functionality
+  - No modifications
+endnote
+
+note right of stage1
+  Stage 1: Future Enhancement
+  - Planned for future development
+endnote
+
+note right of stage2
+  Stage 2: Future Enhancement
+  - Planned for future development
+endnote
+
+note right of stage3
+  Stage 3: Future Enhancement
+  - Planned for future development
+endnote
+
+note bottom of memdir
+  Future: Store evolution state
+  and transition history
+endnote
+
+note bottom of memorychain
+  Future: Store evolution state
+  and transition history
+endnote
+
+@enduml

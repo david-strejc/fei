@@ -79,6 +79,17 @@ CONFIG_SCHEMA = {
             "default": {}
         }
     },
+    "optimizer": { # Added optimizer section
+        "enabled": {"type": ConfigValueType.BOOLEAN, "default": False},
+        "strategy": {
+            "type": ConfigValueType.STRING,
+            "default": "cost",
+            "choices": ["cost", "latency", "cost_performance_ratio"] # Example strategies
+        },
+        "allowed_providers": {"type": ConfigValueType.LIST, "default": []}, # Empty list means all with keys
+        "model_blacklist": {"type": ConfigValueType.LIST, "default": []},
+        "update_interval": {"type": ConfigValueType.INTEGER, "default": 3600, "min": 60} # Cache update interval in seconds
+    },
     "user": {
         "default_model": {"type": ConfigValueType.STRING},
         "default_provider": {"type": ConfigValueType.STRING, "default": "anthropic"},

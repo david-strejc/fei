@@ -50,9 +50,10 @@ The project stands as an alternative to centralized AI approaches, focusing on h
 
 ### LLM Integration
 
-- **Multi-provider Support**: Seamless integration with Anthropic, OpenAI, Groq, and more through LiteLLM
+- **Multi-provider Support**: Seamless integration with Anthropic, OpenAI, Groq, and Google AI through a unified provider interface
 - **Model Selection**: Easily switch between various LLM models
 - **API Key Management**: Secure handling of API keys with proper precedence
+- **Provider Abstraction**: Decoupled provider system for easy extension and testing
 
 ### Code Manipulation Tools
 
@@ -72,7 +73,17 @@ The project stands as an alternative to centralized AI approaches, focusing on h
   - `BatchGlob`: Search for multiple patterns in a single operation
   - `FindInFiles`: Search for patterns across specific files
 
+- **Enhanced Tool System**:
+  - Tool categories for better organization
+  - Tool lifecycle management
+  - Improved tool registry with tags and metadata
+  - Async tool execution support
+
 ### Memory Management System
+
+- **Memory Interface**: Abstract interface for memory systems
+- **Memory Factory**: Factory pattern for creating memory systems
+- **Memory Manager**: Unified manager for memory operations
 
 - **Memdir**: Maildir-compatible memory organization
   - Hierarchical memory with cur/new/tmp folders
@@ -80,6 +91,7 @@ The project stands as an alternative to centralized AI approaches, focusing on h
   - Flag-based status tracking
   - Advanced filtering system
   - Memory lifecycle management
+  - Server management for persistent storage
 
 - **Memorychain**: Distributed memory ledger
   - Blockchain-inspired tamper-proof chain
@@ -88,13 +100,29 @@ The project stands as an alternative to centralized AI approaches, focusing on h
   - Shared brain across multiple agents
   - Node health monitoring and task tracking
 
-### External Services (MCP)
+### Evolution System
 
-- **Brave Search**: Web search integration for real-time information
-- **Memory Service**: Knowledge graph for persistent memory
-- **Fetch Service**: URL fetching for internet access
-- **GitHub Service**: GitHub integration for repository management
-- **Sequential Thinking**: Multi-step reasoning service
+- **Stage-based Evolution**: Progressive improvement through defined stages
+- **Evolution State Management**: Persistent tracking of evolution state
+- **Transition Management**: Controlled transitions between stages
+- **Fallback Mechanisms**: Graceful degradation on failure
+
+### Model-Controlled Process (MCP)
+
+- **Service Interface**: Abstract interface for MCP services
+- **Server Interface**: Abstract interface for MCP servers
+- **Service Registry**: Registry for MCP services
+- **Server Registry**: Registry for MCP servers
+- **MCP Manager**: Unified manager for MCP operations
+
+### User Interface System
+
+- **UI Interface**: Abstract interface for user interfaces
+- **Chat Interface**: Interface for chat interactions
+- **Consent Interface**: Interface for user consent
+- **Command Interface**: Interface for command execution
+- **CLI Implementation**: Enhanced CLI implementation
+- **Textual Implementation**: Modern TUI implementation using Textual
 
 ## 💻 Installation
 
@@ -235,15 +263,32 @@ Fei's architecture is designed for extensibility and performance:
 ├── fei/                  # Main package
 │   ├── core/             # Core assistant implementation
 │   │   ├── assistant.py  # Main assistant class
-│   │   ├── mcp.py        # MCP service integration
 │   │   └── task_executor.py # Task execution logic
+│   ├── providers/         # LLM provider abstraction
+│   │   ├── base.py       # Provider interfaces
+│   │   ├── litellm_provider.py # LiteLLM integration
+│   │   └── manager.py    # Provider management
 │   ├── tools/            # Code manipulation tools
 │   │   ├── code.py       # File and code manipulation
-│   │   ├── registry.py   # Tool registration
+│   │   ├── enhanced_registry.py # Enhanced tool registry
+│   │   ├── category.py   # Tool categorization
+│   │   ├── lifecycle.py  # Tool lifecycle management
 │   │   └── definitions.py # Tool definitions
+│   ├── memory/           # Memory system
+│   │   ├── base.py       # Memory interfaces
+│   │   ├── manager.py    # Memory management
+│   │   └── memdir.py     # Memdir implementation
+│   ├── evolution/        # Evolution system
+│   │   ├── state.py      # Evolution state management
+│   │   ├── loader.py     # Stage loader
+│   │   └── manifest.json # Evolution manifest
+│   ├── mcp/              # Model-controlled process
+│   │   ├── base.py       # MCP interfaces
+│   │   └── manager.py    # MCP management
 │   ├── ui/               # User interfaces
-│   │   ├── cli.py        # Command-line interface
-│   │   └── textual_chat.py # TUI with Textual
+│   │   ├── base.py       # UI interfaces
+│   │   ├── enhanced_cli.py # Enhanced CLI
+│   │   └── enhanced_textual.py # Enhanced Textual UI
 │   └── utils/            # Utility modules
 │       ├── config.py     # Configuration management
 │       └── logging.py    # Logging setup
@@ -251,6 +296,13 @@ Fei's architecture is designed for extensibility and performance:
 │   ├── server.py         # HTTP API server
 │   ├── memorychain.py    # Distributed memory system
 │   └── filter.py         # Memory filtering engine
+├── tests/                # Test suite
+│   ├── test_providers.py # Provider tests
+│   ├── test_tools.py    # Tool tests
+│   ├── test_memory.py   # Memory tests
+│   ├── test_evolution.py # Evolution tests
+│   ├── test_mcp.py      # MCP tests
+│   └── test_ui.py       # UI tests
 └── examples/             # Example usage scripts
 ```
 
@@ -272,6 +324,14 @@ The Fei project includes comprehensive documentation in the `docs/` directory:
 - [Brave Search Troubleshooting](docs/BRAVE_SEARCH_TROUBLESHOOTING.md): Resolving issues with web search
 - [Search Tools](docs/SEARCH_TOOLS.md): Guide to code search capabilities
 - [Textual README](docs/TEXTUAL_README.md): Documentation for the TUI interface
+
+### Architecture Documentation
+
+- [Provider System](docs/PROVIDER_SYSTEM.md): Documentation for the provider abstraction layer
+- [Memory System](docs/MEMORY_SYSTEM.md): Documentation for the memory system
+- [Evolution System](docs/EVOLUTION_SYSTEM.md): Documentation for the evolution system
+- [MCP System](docs/MCP_SYSTEM.md): Documentation for the model-controlled process system
+- [UI System](docs/UI_SYSTEM.md): Documentation for the user interface system
 
 ## ⚠️ Known Issues & Bugs
 
@@ -334,6 +394,12 @@ The Fei project includes comprehensive documentation in the `docs/` directory:
 - Improved test coverage
 - Performance optimization
 - Documentation improvement
+- Decoupled architecture
+- Provider abstraction layer
+- Memory system interfaces
+- Evolution system enhancements
+- MCP system improvements
+- UI system decoupling
 
 ### v0.3 (Planned)
 - Basic web UI

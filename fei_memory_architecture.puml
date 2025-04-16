@@ -1,0 +1,76 @@
+@startuml Fei Memory Architecture
+
+package "Fei Assistant" {
+  [ToolRegistry] as toolRegistry
+  [Memory Tools] as memoryTools
+  [MemoryManager] as memoryManager
+}
+
+package "Memory Connectors" {
+  [MemdirConnector] as memdirConnector
+  [MemorychainConnector] as memorychainConnector
+}
+
+package "Memory Systems" {
+  database "Memdir" {
+    folder "cur" as memdirCur
+    folder "new" as memdirNew
+    folder "tmp" as memdirTmp
+  }
+  
+  database "Memorychain" {
+    [Blockchain Storage] as blockchainStorage
+  }
+}
+
+package "Memory Tools" {
+  [memory_search] as memorySearch
+  [memory_create] as memoryCreate
+  [memory_view] as memoryView
+  [memory_list] as memoryList
+  [memory_delete] as memoryDelete
+  [memory_search_by_tag] as memorySearchByTag
+  [memdir_server_start] as memdirServerStart
+  [memdir_server_stop] as memdirServerStop
+  [memdir_server_status] as memdirServerStatus
+}
+
+package "MCP Memory Integration" {
+  [MCPMemoryService] as mcpMemoryService
+}
+
+' Define relationships
+toolRegistry --> memoryTools : registers
+memoryTools --> memorySearch : contains
+memoryTools --> memoryCreate : contains
+memoryTools --> memoryView : contains
+memoryTools --> memoryList : contains
+memoryTools --> memoryDelete : contains
+memoryTools --> memorySearchByTag : contains
+memoryTools --> memdirServerStart : contains
+memoryTools --> memdirServerStop : contains
+memoryTools --> memdirServerStatus : contains
+
+memoryManager --> memdirConnector : uses
+memoryManager --> memorychainConnector : uses
+
+memdirConnector --> memdirCur : reads/writes
+memdirConnector --> memdirNew : reads/writes
+memdirConnector --> memdirTmp : reads/writes
+
+memorychainConnector --> blockchainStorage : reads/writes
+
+mcpMemoryService --> memdirConnector : may use
+mcpMemoryService --> memorychainConnector : may use
+
+memorySearch --> memdirConnector : uses
+memoryCreate --> memdirConnector : uses
+memoryView --> memdirConnector : uses
+memoryList --> memdirConnector : uses
+memoryDelete --> memdirConnector : uses
+memorySearchByTag --> memdirConnector : uses
+memdirServerStart --> memdirConnector : uses
+memdirServerStop --> memdirConnector : uses
+memdirServerStatus --> memdirConnector : uses
+
+@enduml

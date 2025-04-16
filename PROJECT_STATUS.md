@@ -51,10 +51,10 @@ Based on a review of core files (`assistant.py`, `task_executor.py`, `registry.p
 1.  **Critical - Missing MCP Security/Consent Flows:** The `fei/core/mcp.py` client currently lacks explicit user consent checks before accessing resources or executing tools via MCP. This is a critical deviation from the MCP specification's Security and Trust & Safety guidelines and must be addressed before enabling broader MCP interactions, especially for self-evolution.
 2.  **Incomplete Task Execution:** In the last run, the agent stopped after 5 iterations despite the task requiring ~11 steps and the `[TASK_COMPLETE]` signal not being present. The `TaskExecutor` loop might still have issues with its loop termination or iteration logic, potentially related to its reliance on the LLM for state management.
 3.  **LLM Tool Use Reliability (Gemini):** The Gemini model still seems unreliable in consistently generating correctly formatted tool calls, even with detailed prompts. It often defaults to text descriptions.
-4.  **Interactive Shell Commands:** The agent currently lacks a mechanism to handle long-running or interactive shell commands effectively. The `Shell` tool's background execution logic was refined, but the necessary process management tools (`view_process_output`, `send_process_input`, etc.) could not be implemented due to persistent syntax errors.
+4.  **Interactive Shell Commands (Resolved):** Implemented a comprehensive process management system with handlers for process management tools (`view_process_output`, `send_process_input`, `check_process_status`, `terminate_process`, `list_processes`). The system uses file-based output capture and proper process group management to handle interactive commands and long-running tasks.
 5.  **MCP Cleanup Errors (Tests):** (Potentially Resolved) Console logs during `pytest` runs showed errors likely related to `atexit`. This should be re-verified after the refactor removing `atexit`.
 6.  **Tool Call Error Handling:** The agent previously got stuck asking for a corrected tool when handlers failed due to unpacking errors (fixed for `Replace`, `Edit`). Error handling within the `TaskExecutor` could still be more robust for other tool failures.
-7.  **Process Management Tool Implementation:** Repeated attempts to implement handlers for process management tools (`view_process_output`, `send_process_input`, `check_process_status`, `terminate_process`) in `fei/tools/handlers.py` resulted in syntax errors, even when using `write_to_file`. The code was reverted.
+7.  **Process Management Tool Implementation (Resolved):** Implemented a comprehensive process management system with a dedicated `ProcessManager` class in `fei/core/process_manager.py`. This system handles process tracking, output capture, input handling, and process termination. Also implemented handlers for process management tools (`view_process_output`, `send_process_input`, `check_process_status`, `terminate_process`, `list_processes`) in `fei/tools/process_handlers.py`.
 
 ## TODOs / Next Steps (Updated 2025-04-03)
 
@@ -71,7 +71,7 @@ Based on a review of core files (`assistant.py`, `task_executor.py`, `registry.p
 **Medium Priority:**
 
 2.  **Implement MCP Consent UI (Textual):** Implement the UI interaction for `_handle_mcp_consent` in the Textual interface (`fei/ui/textual_chat.py`).
-3.  **Handle Interactive Shell Commands:** Re-implement/fix handlers for `view_process_output`, `send_process_input`, `check_process_status`, `terminate_process` in `fei/tools/handlers.py` and ensure `ShellRunner` correctly manages background processes and PIDs. This is crucial for running interactive code like the Snake game or validation scripts.
+3.  **Handle Interactive Shell Commands (Completed):** Implemented a comprehensive process management system with handlers for `view_process_output`, `send_process_input`, `check_process_status`, `terminate_process`, and `list_processes`. The system uses file-based output capture and proper process group management to handle interactive commands and long-running tasks.
 4.  **Improve Tool Call Reliability:** Continue refining prompts, consider fallback parsing logic, and evaluate different LLM models for tool use accuracy.
 5.  **Testing:** Add tests specifically for the self-evolution logic (stage loading, checkpointing, validation, transition) and Memdir interactions.
 
@@ -83,26 +83,36 @@ Based on a review of core files (`assistant.py`, `task_executor.py`, `registry.p
 9.  **Debug TaskExecutor Loop (Lower Priority):** Monitor during evolution implementation.
 10. **Implement MCP Consent UI (CLI) (Completed):** Implemented in `cli.py`.
 
-## Plan: Handling Interactive Shell Commands
+## Plan: Handling Interactive Shell Commands (Implemented)
 
 The current `Shell` tool executes commands but doesn't provide a mechanism for interaction or managing long-running processes effectively (like a game).
 
-**Proposed Solution:**
+**Implemented Solution:**
 
-1.  **Background Execution:** Modify the `Shell` tool handler (`fei/tools/handlers.py` -> `shell_handler`) and the underlying `ShellRunner.run_command` in `fei/tools/code.py`:
-    *   **Detect Interactive:** Enhance `is_interactive_command` or add logic to detect commands likely requiring interaction (e.g., running a `pygame` script).
-    *   **Force Background:** When an interactive command is detected, *always* run it in the background using `subprocess.Popen` with `start_new_session=True` (as partially implemented).
-    *   **Return PID:** The tool result *must* reliably return the process ID (PID) of the background process.
-    *   **No Blocking:** Ensure the handler returns immediately after launching the background process, providing the PID and status information.
-2.  **Process Management Tool(s):** Introduce new tools for managing these background processes:
-    *   `view_process_output <pid>`: Reads recent stdout/stderr from the background process's pipes (might require temporary file redirection or more advanced IPC).
-    *   `send_process_input <pid> <input_string>`: Sends input to the process's stdin.
-    *   `check_process_status <pid>`: Checks if the process is still running.
-    *   `terminate_process <pid>`: Sends SIGTERM (and potentially SIGKILL) to the process group.
-3.  **Agent Logic:** The agent needs to be prompted or learn to:
-    *   Recognize when a command should be run interactively.
-    *   Use the `Shell` tool to start it in the background.
-    *   Use the process management tools (`view_process_output`, `check_process_status`, `terminate_process`) to monitor and control the background task based on the overall goal.
+1.  **Process Manager:** Created a dedicated `ProcessManager` class in `fei/core/process_manager.py` that handles:
+    *   Process tracking with a dictionary of process information
+    *   Output capture via temporary files
+    *   Input handling via process stdin
+    *   Process termination with proper signal handling
+    *   Process cleanup on exit
+
+2.  **Background Execution:** Modified the `Shell` tool handler and the underlying `ShellRunner.run_command` in `fei/tools/shell_runner.py`:
+    *   Enhanced `is_interactive_command` to better detect commands likely requiring interaction
+    *   When an interactive command is detected, it's always run in the background using the `ProcessManager`
+    *   The tool result reliably returns the process ID (PID) of the background process
+    *   The handler returns immediately after launching the background process
+
+3.  **Process Management Tools:** Implemented new tools for managing background processes:
+    *   `ViewProcessOutput <pid>`: Reads recent stdout/stderr from the process's output files
+    *   `SendProcessInput <pid> <input_string>`: Sends input to the process's stdin
+    *   `CheckProcessStatus <pid>`: Checks if the process is still running
+    *   `TerminateProcess <pid>`: Sends SIGTERM (and potentially SIGKILL) to the process group
+    *   `ListProcesses`: Lists all processes managed by Fei
+
+4.  **Agent Logic:** The agent can now be prompted to:
+    *   Recognize when a command should be run interactively
+    *   Use the `Shell` tool to start it in the background
+    *   Use the process management tools to monitor and control the background task
 
 ## Plan: Self-Evolution Framework (using Memdir)
 
