@@ -1,0 +1,44 @@
+{
+  "timestamp": "2025-04-20T11:46:58.298266",
+  "test_tools": true,
+  "results": {
+    "anthropic": {
+      "claude-3-7-sonnet-20250219": true,
+      "claude-3-opus-20240229": true
+    },
+    "openai": {
+      "gpt-4o": true,
+      "gpt-4-turbo": true
+    },
+    "gemini": {
+      "gemini-2.5-flash-preview-04-17": true,
+      "gemini-2.5-pro-preview-03-25": true
+    },
+    "groq": {
+      "llama3-70b-8192": true,
+      "llama3-8b-8192": true
+    },
+    "openrouter": {
+      "openrouter/auto": true,
+      "qwen/qwen2.5-coder-7b-instruct": true
+    },
+    "deepseek": {
+      "deepseek-chat": true,
+      "deepseek-coder": true
+    }
+  },
+  "summary": {
+    "providers_tested": 6,
+    "models_tested": 12,
+    "successful_models": 12,
+    "failed_models": 0,
+    "provider_status": {
+      "anthropic": true,
+      "openai": true,
+      "gemini": true,
+      "groq": true,
+      "openrouter": true,
+      "deepseek": true
+    }
+  }
+}

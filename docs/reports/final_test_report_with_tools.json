@@ -1,0 +1,94 @@
+{
+  "timestamp": "2025-04-20T11:52:06.035008",
+  "test_tools": true,
+  "results": {
+    "anthropic": {
+      "claude-3-7-sonnet-20250219": {
+        "basic": true,
+        "tools": true
+      },
+      "claude-3-opus-20240229": {
+        "basic": true,
+        "tools": true
+      }
+    },
+    "openai": {
+      "gpt-4o": {
+        "basic": true,
+        "tools": true
+      },
+      "gpt-4-turbo": {
+        "basic": true,
+        "tools": true
+      }
+    },
+    "gemini": {
+      "gemini-2.5-flash-preview-04-17": {
+        "basic": true,
+        "tools": true
+      },
+      "gemini-2.5-pro-preview-03-25": {
+        "basic": true,
+        "tools": true
+      }
+    },
+    "groq": {
+      "llama3-70b-8192": {
+        "basic": true,
+        "tools": true
+      },
+      "llama3-8b-8192": {
+        "basic": true,
+        "tools": true
+      }
+    },
+    "openrouter": {
+      "openrouter/auto": {
+        "basic": true,
+        "tools": null
+      },
+      "qwen/qwen2.5-coder-7b-instruct": {
+        "basic": true,
+        "tools": null
+      }
+    },
+    "deepseek": {
+      "deepseek-chat": {
+        "basic": true,
+        "tools": true
+      },
+      "deepseek-coder": {
+        "basic": true,
+        "tools": true
+      }
+    }
+  },
+  "summary": {
+    "providers_tested": 6,
+    "models_tested": 12,
+    "basic": {
+      "successful": 12,
+      "failed": 0,
+      "provider_status": {
+        "anthropic": true,
+        "openai": true,
+        "gemini": true,
+        "groq": true,
+        "openrouter": true,
+        "deepseek": true
+      }
+    },
+    "tools": {
+      "tested": 10,
+      "successful": 10,
+      "failed": 0,
+      "provider_status": {
+        "anthropic": true,
+        "openai": true,
+        "gemini": true,
+        "groq": true,
+        "deepseek": true
+      }
+    }
+  }
+}

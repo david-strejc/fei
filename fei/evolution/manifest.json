@@ -1,0 +1,44 @@
+{
+  "stages": {
+    "stage_0": {
+      "name": "Initial Bootstrap",
+      "description": "The initial operational state of the agent before any self-evolution.",
+      "module": "fei.evolution.stages.stage_0",
+      "validation_criteria": [
+        "Basic task execution works.",
+        "Core tools are functional."
+      ],
+      "allowed_transitions": ["stage_1"]
+    },
+    "stage_1": {
+      "name": "Basic Self-Improvement",
+      "description": "First stage of self-evolution with improved reasoning.",
+      "module": "fei.evolution.stages.stage_1",
+      "validation_criteria": [
+        "Enhanced reasoning capabilities.",
+        "Improved tool usage."
+      ],
+      "allowed_transitions": ["stage_0", "stage_2"]
+    },
+    "stage_2": {
+      "name": "Advanced Capabilities",
+      "description": "Advanced stage with sophisticated planning and execution.",
+      "module": "fei.evolution.stages.stage_2",
+      "validation_criteria": [
+        "Complex planning capabilities.",
+        "Advanced tool orchestration."
+      ],
+      "allowed_transitions": ["stage_1", "stage_3"]
+    },
+    "stage_3": {
+      "name": "Full Autonomy",
+      "description": "Highest stage with full autonomous operation.",
+      "module": "fei.evolution.stages.stage_3",
+      "validation_criteria": [
+        "Autonomous goal setting.",
+        "Self-directed learning and improvement."
+      ],
+      "allowed_transitions": ["stage_2"]
+    }
+  }
+}

@@ -1,0 +1,72 @@
+@startuml Fei Component Diagram
+
+' Define components
+package "Fei Core" {
+  [Assistant] as assistant
+  [ProviderManager] as providerManager
+  [ToolManager] as toolManager
+  [ConversationManager] as conversationManager
+  [MCPManager] as mcpManager
+  [ModelOptimizer] as modelOptimizer
+}
+
+package "UI" {
+  [CLI] as cli
+  [TextualChat] as textualChat
+}
+
+package "Tools" {
+  [ToolRegistry] as toolRegistry
+  [Code Tools] as codeTools
+  [Memory Tools] as memoryTools
+}
+
+package "Evolution" {
+  [Stage Loader] as stageLoader
+  [Stage 0] as stage0
+}
+
+package "External Services" {
+  [LiteLLM] as litellm
+  [Anthropic] as anthropic
+  [OpenAI] as openai
+  [Groq] as groq
+  [Google] as google
+  [MCP Servers] as mcpServers
+}
+
+package "Memory Systems" {
+  [Memdir] as memdir
+  [Memorychain] as memorychain
+}
+
+' Define relationships
+cli --> assistant : uses
+textualChat --> assistant : uses
+
+assistant --> providerManager : manages providers
+assistant --> toolManager : manages tools
+assistant --> conversationManager : manages conversation
+assistant --> mcpManager : manages MCP
+assistant --> modelOptimizer : optimizes model selection
+
+toolManager --> toolRegistry : uses
+toolRegistry --> codeTools : registers
+toolRegistry --> memoryTools : registers
+
+stageLoader --> stage0 : loads
+stageLoader --> assistant : modifies
+stageLoader --> toolRegistry : modifies
+
+providerManager --> litellm : uses
+litellm --> anthropic : connects to
+litellm --> openai : connects to
+litellm --> groq : connects to
+litellm --> google : connects to
+
+mcpManager --> mcpServers : connects to
+
+memoryTools --> memdir : connects to
+memoryTools --> memorychain : connects to
+
+@enduml

@@ -1,0 +1,97 @@
+@startuml Fei Tool Architecture
+
+package "Fei Core" {
+  [Assistant] as assistant
+  [ToolManager] as toolManager
+}
+
+package "Tool System" {
+  [ToolRegistry] as toolRegistry
+  [Tool] as tool
+  
+  package "Tool Categories" {
+    [Code Tools] as codeTools
+    [Memory Tools] as memoryTools
+    [MCP Tools] as mcpTools
+  }
+  
+  package "Tool Handlers" {
+    [Sync Handlers] as syncHandlers
+    [Async Handlers] as asyncHandlers
+    [MCP Tool Handlers] as mcpToolHandlers
+  }
+}
+
+package "Code Tools" {
+  [glob_tool] as globTool
+  [grep_tool] as grepTool
+  [view_file] as viewFile
+  [edit_file] as editFile
+  [replace_in_file] as replaceInFile
+  [ls_tool] as lsTool
+  [shell_command] as shellCommand
+}
+
+package "Memory Tools" {
+  [memory_search] as memorySearch
+  [memory_create] as memoryCreate
+  [memory_view] as memoryView
+  [memory_list] as memoryList
+  [memory_delete] as memoryDelete
+  [memory_search_by_tag] as memorySearchByTag
+}
+
+package "MCP Tools" {
+  [brave_web_search] as braveWebSearch
+  [mcp_memory_*] as mcpMemoryTools
+  [mcp_fetch_*] as mcpFetchTools
+  [mcp_github_*] as mcpGithubTools
+}
+
+' Define relationships
+assistant --> toolManager : uses
+toolManager --> toolRegistry : uses
+toolRegistry --> tool : contains many
+
+toolRegistry --> codeTools : registers
+toolRegistry --> memoryTools : registers
+toolRegistry --> mcpTools : registers
+
+codeTools --> globTool : contains
+codeTools --> grepTool : contains
+codeTools --> viewFile : contains
+codeTools --> editFile : contains
+codeTools --> replaceInFile : contains
+codeTools --> lsTool : contains
+codeTools --> shellCommand : contains
+
+memoryTools --> memorySearch : contains
+memoryTools --> memoryCreate : contains
+memoryTools --> memoryView : contains
+memoryTools --> memoryList : contains
+memoryTools --> memoryDelete : contains
+memoryTools --> memorySearchByTag : contains
+
+mcpTools --> braveWebSearch : contains
+mcpTools --> mcpMemoryTools : contains
+mcpTools --> mcpFetchTools : contains
+mcpTools --> mcpGithubTools : contains
+
+tool --> syncHandlers : uses
+tool --> asyncHandlers : uses
+tool --> mcpToolHandlers : uses
+
+note right of toolRegistry
+  Central registry for all tools
+  - Validates tool arguments
+  - Handles sync/async execution
+  - Special handling for MCP tools
+endnote
+
+note right of shellCommand
+  Has security restrictions
+  Can be bypassed with
+  --do-as-i-say CLI flag
+endnote
+
+@enduml

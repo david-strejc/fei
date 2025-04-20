@@ -1,0 +1,123 @@
+@startuml Fei Chat Sequence Diagram
+
+actor User
+participant "CLI/UI" as UI
+participant "Assistant" as Assistant
+participant "ConversationManager" as ConversationManager
+participant "ProviderManager" as ProviderManager
+participant "LiteLLM" as LiteLLM
+participant "LLM Provider" as LLMProvider
+participant "ToolManager" as ToolManager
+participant "ToolRegistry" as ToolRegistry
+
+User -> UI: Input message
+activate UI
+
+UI -> Assistant: chat(message)
+activate Assistant
+
+Assistant -> ConversationManager: add_user_message(message)
+activate ConversationManager
+ConversationManager --> Assistant
+deactivate ConversationManager
+
+Assistant -> Assistant: _send_message_to_llm(conversation, system_prompt, tools)
+activate Assistant
+
+Assistant -> ProviderManager: get API key and model
+activate ProviderManager
+ProviderManager --> Assistant: API key, model
+deactivate ProviderManager
+
+Assistant -> LiteLLM: litellm_completion(model, messages, tools, etc.)
+activate LiteLLM
+
+LiteLLM -> LLMProvider: API request
+activate LLMProvider
+LLMProvider --> LiteLLM: API response
+deactivate LLMProvider
+
+LiteLLM --> Assistant: response
+deactivate LiteLLM
+
+Assistant -> Assistant: _extract_tool_calls(response)
+Assistant -> Assistant: _extract_response_content(response)
+Assistant --> Assistant: initial_response, tool_calls
+deactivate Assistant
+
+alt Has tool calls
+    Assistant -> ConversationManager: add_assistant_message(initial_response, tool_calls)
+    activate ConversationManager
+    ConversationManager --> Assistant
+    deactivate ConversationManager
+    
+    Assistant -> Assistant: process_tool_calls(tool_calls)
+    activate Assistant
+    
+    loop For each tool call
+        Assistant -> ToolManager: execute_tool(tool_name, tool_args)
+        activate ToolManager
+        
+        ToolManager -> ToolRegistry: execute_tool(tool_name, tool_args)
+        activate ToolRegistry
+        
+        alt Regular tool
+            ToolRegistry -> ToolRegistry: Get tool handler
+            ToolRegistry -> ToolRegistry: Execute handler
+        else MCP tool
+            ToolRegistry -> ToolRegistry: _handle_mcp_tool(name, arguments)
+        end
+        
+        ToolRegistry --> ToolManager: tool result
+        deactivate ToolRegistry
+        
+        ToolManager --> Assistant: tool result
+        deactivate ToolManager
+    end
+    
+    Assistant --> Assistant: tool_results
+    deactivate Assistant
+    
+    Assistant -> ConversationManager: add_tool_results(tool_results)
+    activate ConversationManager
+    ConversationManager --> Assistant
+    deactivate ConversationManager
+    
+    Assistant -> Assistant: _send_continuation(tools)
+    activate Assistant
+    
+    Assistant -> LiteLLM: litellm_completion(model, messages, tools, etc.)
+    activate LiteLLM
+    
+    LiteLLM -> LLMProvider: API request
+    activate LLMProvider
+    LLMProvider --> LiteLLM: API response
+    deactivate LLMProvider
+    
+    LiteLLM --> Assistant: continue_response
+    deactivate LiteLLM
+    
+    Assistant -> Assistant: _extract_response_content(continue_response)
+    Assistant --> Assistant: answer
+    deactivate Assistant
+    
+    Assistant -> ConversationManager: add_assistant_message(answer)
+    activate ConversationManager
+    ConversationManager --> Assistant
+    deactivate ConversationManager
+else No tool calls
+    Assistant -> ConversationManager: add_assistant_message(initial_response)
+    activate ConversationManager
+    ConversationManager --> Assistant
+    deactivate ConversationManager
+    
+    Assistant -> Assistant: answer = initial_response
+end
+
+Assistant --> UI: answer
+deactivate Assistant
+
+UI -> User: Display response
+deactivate UI
+
+@enduml

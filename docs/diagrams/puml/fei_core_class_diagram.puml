@@ -1,0 +1,148 @@
+@startuml Fei Core Class Diagram
+
+' Define classes
+class Assistant {
+  -config: Config
+  -provider_manager: ProviderManager
+  -tool_manager: ToolManager
+  -conversation_manager: ConversationManager
+  -model_optimizer: ModelOptimizer
+  -mcp_manager: MCPManager
+  -consent_ui_provider: ConsentUiProvider
+  +chat(message: str, system_prompt: str): str
+  +execute_tool(tool_name: str, tool_args: Dict): Dict
+  +process_tool_calls(tool_calls: List): List
+  +reset_conversation(): void
+}
+
+class ProviderManager {
+  -config: Config
+  -provider: str
+  -api_key: str
+  -model: str
+  -provider_key_map: Dict
+  -default_models: Dict
+  +_setup_api_key(api_key: str): str
+  +_setup_model(): str
+}
+
+class ToolManager {
+  -provider: str
+  -tool_registry: ToolRegistry
+  -mcp_manager: MCPManager
+  +get_tools(): List
+  +execute_tool(tool_name: str, tool_args: Dict): Dict
+}
+
+class ConversationManager {
+  -provider: str
+  -conversation: List
+  -last_message_id: str
+  +add_user_message(message: str): void
+  +add_assistant_message(content: str, tool_calls: List): void
+  +add_tool_results(tool_results: List): void
+  +get_messages(): List
+  +reset(): void
+}
+
+class ModelOptimizer {
+  -config: Config
+  -provider_model_map: Dict
+  +get_optimal_model(provider: str, base_model: str): str
+}
+
+class MCPManager {
+  -config: Config
+  -client: MCPClient
+  -memory: MCPMemoryService
+  -fetch: MCPFetchService
+  -brave_search: MCPBraveSearchService
+  -github: MCPGitHubService
+  +list_servers(): List
+  +add_server(server_id: str, config: Dict): bool
+  +remove_server(server_id: str): bool
+  +set_default_server(server_id: str): bool
+  +stop_server(server_id: str): bool
+  +stop_all_servers(): void
+  +call_service(service: str, method: str, params: Dict, server_id: str): Dict
+}
+
+class MCPClient {
+  -config: Config
+  -consent_handler: ConsentHandler
+  -process_manager: ProcessManager
+  -servers: Dict
+  -default_server: str
+  -ssl_context: SSLContext
+  -http_client: AsyncClient
+  +close(): void
+  +list_servers(): List
+  +add_server(server_id: str, config: Dict): bool
+  +remove_server(server_id: str): bool
+  +set_default_server(server_id: str): bool
+  +stop_server(server_id: str): bool
+  +call_service(service: str, method: str, params: Dict, server_id: str): Dict
+}
+
+class ProcessManager {
+  -processes: Dict
+  -_lock: Lock
+  +start_process(process_id: str, command: List, env: Dict): Process
+  +stop_process(process_id: str, timeout: float): bool
+  +cleanup_all_async(): void
+  +cleanup_all_sync(): void
+}
+
+class MCPBaseService {
+  -client: MCPClient
+  -server_id: str
+  -service_name: str
+  +call_method(method: str, params: Dict): Dict
+}
+
+class ToolRegistry {
+  -tools: Dict
+  -executor: ThreadPoolExecutor
+  +register_tool(name: str, description: str, input_schema: Dict, handler_func: Callable, tags: List): void
+  +get_tools(): List
+  +get_tools_by_tag(tag: str): List
+  +get_tool(name: str): Dict
+  +get_handler(name: str): Callable
+  +execute_tool(name: str, arguments: Dict): Dict
+  +list_tool_names(): List
+  +list_tags(): Set
+  +invoke_tool(name: str, arguments: Dict): Dict
+  +register_class_methods(cls: Any, prefix: str, tags: List): void
+}
+
+class Tool {
+  -name: str
+  -description: str
+  -input_schema: Dict
+  -handler_func: Callable
+  -tags: List
+  -is_async: bool
+  +to_dict(): Dict
+  +validate_arguments(arguments: Dict): Tuple
+}
+
+' Define relationships
+Assistant --> ProviderManager : uses
+Assistant --> ToolManager : uses
+Assistant --> ConversationManager : uses
+Assistant --> ModelOptimizer : uses
+Assistant --> MCPManager : uses
+
+ToolManager --> ToolRegistry : uses
+MCPManager --> MCPClient : uses
+MCPClient --> ProcessManager : uses
+
+MCPManager --> MCPBaseService : contains
+MCPBaseService <|-- MCPMemoryService
+MCPBaseService <|-- MCPFetchService
+MCPBaseService <|-- MCPBraveSearchService
+MCPBaseService <|-- MCPGitHubService
+
+ToolRegistry --> Tool : contains
+
+@enduml
